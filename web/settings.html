@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nova IDE - Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background: #0b0f1a;
+      color: #e5e7eb;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 30px;
+    }
+
+    .section {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: #9ca3af;
+    }
+
+    .setting {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .setting label {
+      font-size: 14px;
+    }
+
+    input, select {
+      background: #020617;
+      border: 1px solid #1f2937;
+      color: white;
+      padding: 6px 10px;
+      border-radius: 6px;
+      outline: none;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+    }
+
+    .save-container {
+      text-align: right;
+      margin-top: 20px;
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .primary {
+      background: #6366f1;
+      color: white;
+    }
+
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1>⚙️ Settings</h1>
+
+  <!-- THEME -->
+  <div class="section">
+    <h2>Appearance</h2>
+
+    <div class="setting">
+      <label>Theme</label>
+      <select id="theme">
+        <option>Dark</option>
+        <option>Light</option>
+        <option>System</option>
+      </select>
+    </div>
+
+    <div class="setting">
+      <label>Font Size</label>
+      <input type="number" id="fontSize" value="14">
+    </div>
+
+    <div class="setting">
+      <label>Show Line Numbers</label>
+      <input type="checkbox" id="lineNumbers" checked>
+    </div>
+  </div>
+
+  <!-- EDITOR -->
+  <div class="section">
+    <h2>Editor</h2>
+
+    <div class="setting">
+      <label>Auto Save</label>
+      <input type="checkbox" id="autosave">
+    </div>
+
+    <div class="setting">
+      <label>Tab Size</label>
+      <input type="number" id="tabSize" value="4">
+    </div>
+
+    <div class="setting">
+      <label>Word Wrap</label>
+      <input type="checkbox" id="wordWrap" checked>
+    </div>
+  </div>
+
+  <!-- GIT -->
+  <div class="section">
+    <h2>Git</h2>
+
+    <div class="setting">
+      <label>Username</label>
+      <input type="text" id="gitUser" placeholder="Your name">
+    </div>
+
+    <div class="setting">
+      <label>Email</label>
+      <input type="text" id="gitEmail" placeholder="your@email.com">
+    </div>
+
+    <div class="setting">
+      <label>Auto Pull on Start</label>
+      <input type="checkbox" id="autoPull">
+    </div>
+  </div>
+
+  <!-- PLUGINS -->
+  <div class="section">
+    <h2>Plugins</h2>
+
+    <div class="setting">
+      <label>Enable Plugins</label>
+      <input type="checkbox" id="enablePlugins" checked>
+    </div>
+
+    <div class="setting">
+      <label>Auto Update Plugins</label>
+      <input type="checkbox" id="autoUpdate">
+    </div>
+  </div>
+
+  <!-- SAVE -->
+  <div class="save-container">
+    <button class="btn primary" onclick="saveSettings()">Save Settings</button>
+  </div>
+
+</div>
+
+<script>
+let handler;
+
+// Connect to PyQt
+if (typeof qt !== "undefined") {
+  new QWebChannel(qt.webChannelTransport, function(channel) {
+    handler = channel.objects.WebBridge;
+  });
+}
+
+function saveSettings() {
+  const settings = {
+    theme: document.getElementById("theme").value,
+    fontSize: document.getElementById("fontSize").value,
+    lineNumbers: document.getElementById("lineNumbers").checked,
+    autosave: document.getElementById("autosave").checked,
+    tabSize: document.getElementById("tabSize").value,
+    wordWrap: document.getElementById("wordWrap").checked,
+    gitUser: document.getElementById("gitUser").value,
+    gitEmail: document.getElementById("gitEmail").value,
+    autoPull: document.getElementById("autoPull").checked,
+    enablePlugins: document.getElementById("enablePlugins").checked,
+    autoUpdate: document.getElementById("autoUpdate").checked
+  };
+
+  console.log("Saving settings:", settings);
+
+  if (handler) {
+    handler.save_settings(JSON.stringify(settings));
+  }
+
+  alert("Settings saved!");
+}
+</script>
+
+</body>
+</html>

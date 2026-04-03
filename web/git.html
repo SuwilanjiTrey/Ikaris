@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nova IDE - Git</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background: #0b0f1a;
+      color: #e5e7eb;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      height: 100vh;
+    }
+
+    /* LEFT PANEL */
+    .left {
+      border-right: 1px solid #1f2937;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .section {
+      padding: 20px;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .section h2 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #9ca3af;
+    }
+
+    .file {
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .file:hover {
+      background: #1f2937;
+    }
+
+    /* RIGHT PANEL */
+    .right {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .commit-box textarea {
+      width: 100%;
+      height: 80px;
+      background: #020617;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      color: white;
+      padding: 10px;
+      resize: none;
+      outline: none;
+    }
+
+    .actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .primary {
+      background: #22c55e;
+      color: black;
+    }
+
+    .secondary {
+      background: #374151;
+      color: white;
+    }
+
+    /* LOG */
+    .log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .commit {
+      padding: 10px;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .commit .msg {
+      font-weight: 500;
+    }
+
+    .commit .meta {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    /* HEADER */
+    .header {
+      padding: 15px 20px;
+      border-bottom: 1px solid #1f2937;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .branch {
+      font-size: 13px;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- LEFT: FILE STATUS -->
+  <div class="left">
+
+    <div class="header">
+      <div>Changes</div>
+      <div class="branch">main</div>
+    </div>
+
+    <div class="section" id="file-list">
+      <h2>Modified Files</h2>
+
+      <!-- Example -->
+      <div class="file">index.html</div>
+      <div class="file">app.py</div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: COMMIT + LOG -->
+  <div class="right">
+
+    <div class="section commit-box">
+      <h2>Commit Changes</h2>
+      <textarea id="commitMsg" placeholder="Write a commit message..."></textarea>
+
+      <div class="actions">
+        <button class="btn primary" onclick="commit()">Commit</button>
+        <button class="btn secondary" onclick="push()">Push</button>
+        <button class="btn secondary" onclick="pull()">Pull</button>
+      </div>
+    </div>
+
+    <div class="log" id="log">
+      <div class="commit">
+        <div class="msg">Initial commit</div>
+        <div class="meta">You • just now</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+let handler;
+
+// Connect to PyQt
+if (typeof qt !== "undefined") {
+  new QWebChannel(qt.webChannelTransport, function(channel) {
+    handler = channel.objects.WebBridge;
+  });
+}
+
+/* ACTIONS */
+
+function commit() {
+  const msg = document.getElementById("commitMsg").value;
+
+  if (!msg) {
+    alert("Enter a commit message");
+    return;
+  }
+
+  if (handler) {
+    handler.git_commit(msg);
+  }
+
+  addCommit(msg);
+}
+
+function push() {
+  if (handler) handler.git_push();
+}
+
+function pull() {
+  if (handler) handler.git_pull();
+}
+
+/* UI UPDATE */
+
+function addCommit(message) {
+  const log = document.getElementById("log");
+
+  const el = document.createElement("div");
+  el.className = "commit";
+  el.innerHTML = `
+    <div class="msg">${message}</div>
+    <div class="meta">You • just now</div>
+  `;
+
+  log.prepend(el);
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Nova IDE - Plugins</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background: #0b0f1a;
+      color: #e5e7eb;
+    }
+
+    /* NAVBAR */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .logo {
+      font-weight: 600;
+      font-size: 18px;
+    }
+
+    /* HEADER */
+    .header {
+      padding: 40px;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      color: #9ca3af;
+    }
+
+    /* SEARCH */
+    .search-bar {
+      margin-top: 20px;
+      max-width: 400px;
+    }
+
+    .search-bar input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: white;
+      outline: none;
+    }
+
+    /* GRID */
+    .plugins {
+      padding: 40px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 20px;
+      transition: 0.3s;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      border-color: #6366f1;
+    }
+
+    .plugin-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .icon {
+      width: 40px;
+      height: 40px;
+      background: #1f2937;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .title {
+      font-weight: 600;
+    }
+
+    .desc {
+      font-size: 14px;
+      color: #9ca3af;
+      margin: 10px 0;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .install {
+      background: #22c55e;
+      color: black;
+    }
+
+    .remove {
+      background: #ef4444;
+      color: white;
+    }
+
+    .tag {
+      font-size: 12px;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <div class="navbar">
+    <div class="logo">⚡ Nova IDE</div>
+    <div>Plugins</div>
+  </div>
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>Extensions Marketplace</h1>
+    <p>Enhance your IDE with powerful plugins.</p>
+
+    <div class="search-bar">
+      <input type="text" placeholder="Search plugins...">
+    </div>
+  </div>
+
+  <!-- PLUGINS GRID -->
+  <div class="plugins">
+
+    <div class="card">
+      <div class="plugin-header">
+        <div class="icon">⚙️</div>
+        <div class="title">Python Support</div>
+      </div>
+      <div class="desc">Run and debug Python code seamlessly.</div>
+      <div class="actions">
+        <span class="tag">Language</span>
+        <button class="btn install" onclick="installPlugin('python')">Install</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="plugin-header">
+        <div class="icon">🎨</div>
+        <div class="title">Theme Pack</div>
+      </div>
+      <div class="desc">Beautiful dark and light themes.</div>
+      <div class="actions">
+        <span class="tag">UI</span>
+        <button class="btn install" onclick="installPlugin('theme')">Install</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="plugin-header">
+        <div class="icon">⚡</div>
+        <div class="title">Auto Complete+</div>
+      </div>
+      <div class="desc">Advanced AI-powered suggestions.</div>
+      <div class="actions">
+        <span class="tag">Productivity</span>
+        <button class="btn install" onclick="installPlugin('autocomplete')">Install</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="plugin-header">
+        <div class="icon">🌐</div>
+        <div class="title">Live Server</div>
+      </div>
+      <div class="desc">Launch a local dev server instantly.</div>
+      <div class="actions">
+        <span class="tag">Dev Tools</span>
+        <button class="btn install" onclick="installPlugin('liveserver')">Install</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function installPlugin(name) {
+      console.log("Installing:", name);
+
+      if (typeof handler !== "undefined") {
+        handler.install_plugin(name);
+      }
+
+      alert(name + " plugin installed!");
+    }
+  </script>
+
+</body>
+</html>
