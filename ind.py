@@ -15,11 +15,13 @@ from pathlib import Path
 from utils.numbers import NumberedCodeEditor, MarkdownContainer
 from utils.highlighter import get_highlighter, check_syntax
 from components.Terminal import TerminalManager
+from utils.tree_features import setup_tree_context_menu, toolbar_new_file
+from utils.git_bridge import GitBridge
 
 
-class WebBridge(QObject):
+class WebBridge(QObject, GitBridge):
     def __init__(self, CodeEditor):
-        super().__init__()
+        QObject.__init__(self)
         self.mainWindow = CodeEditor
     
     @pyqtSlot()
@@ -274,6 +276,7 @@ class CodeEditor(QMainWindow):
 
         # Set up tree view
         self.setup_tree_view(tree_layout)
+        setup_tree_context_menu(self)
 
         # Create editor container
         editor_container = QWidget()
@@ -362,7 +365,7 @@ class CodeEditor(QMainWindow):
             ('Plugins', 'images/UI/apps-add.png', lambda: self.plugins()),
             ('open existing project', 'images/UI/folder-open.png', self.open_file_searcher),
             ('open terminal', 'images/UI/terminal2.png', self.toggle_terminal),
-            ('settings', 'images/UI/settings.png',lambda: self.settings)
+            ('settings', 'images/UI/settings.png',lambda: self.settings())
         ]
 
         for text, icon_path, callback in buttons_data:
@@ -487,12 +490,15 @@ class CodeEditor(QMainWindow):
         self.openFiles = WebBridge(self)
         self.updateFolder = WebBridge(self)
         self.install_plugin = WebBridge(self)
+        self.save_settings = WebBridge(self)
+        
 
         # Create channel
         self.channel = QWebChannel()
         self.channel.registerObject("WebBridge", self.bridge)
         self.channel.registerObject("WebBridge", self.openFiles)
         self.channel.registerObject("WebBridge", self.install_plugin)
+        self.channel.registerObject("WebBridge", self.save_settings)
 
         ## landing page
         self.landing_page = QWebEngineView()
@@ -503,6 +509,7 @@ class CodeEditor(QMainWindow):
         self.gitHandler = QWebEngineView()
         self.gitHandler.page().setWebChannel(self.channel)
         self.gitHandler.load(QUrl.fromLocalFile(os.path.abspath("web/git.html")))
+        self.bridge.setup_git(self.gitHandler)
         
         
         ## plugins page
@@ -511,9 +518,9 @@ class CodeEditor(QMainWindow):
         self.plugin_page.load(QUrl.fromLocalFile(os.path.abspath("web/plugins.html")))
         
         ## settings page
-        self.settings = QWebEngineView()
-        self.settings.page().setWebChannel(self.channel)
-        self.settings.load(QUrl.fromLocalFile(os.path.abspath("web/settings.html")))
+        self.settings_page = QWebEngineView()
+        self.settings_page.page().setWebChannel(self.channel)
+        self.settings_page.load(QUrl.fromLocalFile(os.path.abspath("web/settings.html")))
         
         
         
@@ -533,7 +540,7 @@ class CodeEditor(QMainWindow):
         layout.addWidget(self.plugin_page)
         layout.addWidget(self.image_label)
         layout.addWidget(self.gitHandler)
-        layout.addWidget(self.settings)
+        layout.addWidget(self.settings_page)
         layout.addWidget(self.current_file_tabs)
 
         
@@ -542,7 +549,7 @@ class CodeEditor(QMainWindow):
         self.image_label.setVisible(False)
         self.plugin_page.setVisible(False)
         self.gitHandler.setVisible(False)
-        self.settings.setVisible(False)
+        self.settings_page.setVisible(False)
         
 
 
@@ -1256,14 +1263,7 @@ class CodeEditor(QMainWindow):
                 os.mkdir(os.path.join(dir_path, folder_name))
 
     def create_new_file(self):
-        index = self.tree.currentIndex()
-        if index.isValid():
-            dir_path = self.model.filePath(index)
-            if os.path.isfile(dir_path):
-                dir_path = os.path.dirname(dir_path)
-            file_name, ok = QInputDialog.getText(self, 'New File', 'Enter file name:')
-            if ok and file_name:
-                open(os.path.join(dir_path, file_name), 'w').close()
+        toolbar_new_file(self)
 
 
     def handle_text_changed(self, path):
@@ -1306,6 +1306,8 @@ class CodeEditor(QMainWindow):
             self.current_file_tabs.setVisible(False)
             self.editor.setVisible(False)
             self.image_label.setVisible(False)
+            self.settings_page.setVisible(False)
+            self.gitHandler.setVisible(False)
 
         else:
             # HIDE plugins page
@@ -1319,6 +1321,7 @@ class CodeEditor(QMainWindow):
                 # Tabs exist → show tabs
                 self.current_file_tabs.setVisible(True)
                 self.landing_page.setVisible(False)
+                self.plugin_page.setVisible(False)
 
 
         
@@ -1348,17 +1351,19 @@ class CodeEditor(QMainWindow):
     def settings(self):
         self.settings_visible = not self.settings_visible
 
-        if self.plugins_visible:
-            # SHOW plugins page
-            self.settings_visible.setVisible(True)
+        if self.settings_visible:
+            # SHOW settings page
+            self.settings_page.setVisible(True)
             self.landing_page.setVisible(False)
             self.current_file_tabs.setVisible(False)
             self.editor.setVisible(False)
             self.image_label.setVisible(False)
+            self.gitHandler.setVisible(False)
+            self.plugin_page.setVisible(False)
 
         else:
-            # HIDE plugins page
-            self.settings_visible.setVisible(False)
+            # HIDE settings page
+            self.settings_page.setVisible(False)
 
             if self.current_file_tabs.count() == 0:
                 # No tabs → show landing
@@ -1368,6 +1373,9 @@ class CodeEditor(QMainWindow):
                 # Tabs exist → show tabs
                 self.current_file_tabs.setVisible(True)
                 self.landing_page.setVisible(False)
+                self.settings_page.setVisible(False)
+                self.gitHandler.setVisible(False)
+                self.plugin_page.setVisible(False)
         
 
     def refresh_ui(self):
@@ -1403,6 +1411,8 @@ class CodeEditor(QMainWindow):
         self.github_visible = not self.github_visible
 
         if self.github_visible:
+            # paint latest state
+            self.bridge.git_refresh()
             # SHOW github page
             self.gitHandler.setVisible(True)
             self.plugin_page.setVisible(False)
@@ -1410,6 +1420,7 @@ class CodeEditor(QMainWindow):
             self.current_file_tabs.setVisible(False)
             self.editor.setVisible(False)
             self.image_label.setVisible(False)
+            self.settings_page.setVisible(False)
 
         else:
             # HIDE plugins page
@@ -1473,6 +1484,7 @@ class CodeEditor(QMainWindow):
                 self.toggle_tree_view()
                 # at the end of update_directory()
                 self.terminal_manager.set_cwd(path_string)
+                self.bridge.git_refresh()
         else:
             print(f"Invalid directory: {new_directory}")  # Debug print
             QMessageBox.warning(self, 'Error', f'Invalid directory: {new_directory}')
