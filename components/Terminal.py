@@ -241,13 +241,242 @@ def _256_color(idx: int) -> str:
     return f"#{v:02x}{v:02x}{v:02x}"
 
 
+# This is the replacement TerminalPane class + TerminalDisplay helper.
+# Everything from line 244 to line 535 in terminal.py gets replaced with this.
+
+class TerminalDisplay(QTextEdit):
+    """
+    A QTextEdit that acts as both the output display AND the input surface.
+    - Output from the PTY is appended at the end
+    - The user types after the last output position (_input_anchor)
+    - Ctrl+C, Ctrl+D, Ctrl+L, Tab, arrows all send bytes directly to the PTY
+    - Selection + copy works normally (mouse drag / Ctrl+Shift+C or Ctrl+C
+      when text is selected)
+    - Paste sends clipboard text straight to the PTY
+    """
+
+    # signals to the owning TerminalPane
+    char_written  = pyqtSignal(bytes)   # user typed something → write to pty
+    sigint_req    = pyqtSignal()        # Ctrl+C with no selection
+
+    def __init__(self):
+        super().__init__()
+        self.setFont(QFont("Monospace", 11))
+        self.setStyleSheet("""
+            QTextEdit {
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                border: none;
+                padding: 4px;
+                selection-background-color: #3a5a8a;
+            }
+        """)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setUndoRedoEnabled(False)
+        self.setAcceptRichText(False)
+
+        # Position after the last PTY output — user may only type here or later
+        self._input_anchor = 0
+        self._history: list[str] = []
+        self._hist_idx = -1
+
+    # ── anchor management ─────────────────────────────────────────────
+    def _set_anchor(self):
+        """Called after every PTY write; locks the editable region."""
+        self._input_anchor = len(self.toPlainText())
+
+    def _get_input_text(self) -> str:
+        """Return whatever the user has typed after the anchor."""
+        return self.toPlainText()[self._input_anchor:]
+
+    def _clear_input(self):
+        """Erase user-typed text after the anchor."""
+        doc    = self.document()
+        cursor = QTextCursor(doc)
+        cursor.movePosition(QTextCursor.End)
+        anchor_cursor = QTextCursor(doc)
+        anchor_cursor.setPosition(self._input_anchor)
+        anchor_cursor.setPosition(cursor.position(), QTextCursor.KeepAnchor)
+        anchor_cursor.removeSelectedText()
+
+    def _ensure_cursor_at_end(self):
+        c = self.textCursor()
+        if c.position() < self._input_anchor:
+            c.movePosition(QTextCursor.End)
+            self.setTextCursor(c)
+
+    # ── keyboard handling ─────────────────────────────────────────────
+    def keyPressEvent(self, event):
+        from PyQt5.QtGui import QKeyEvent
+        key  = event.key()
+        mods = event.modifiers()
+        ctrl = bool(mods & Qt.ControlModifier)
+        shift= bool(mods & Qt.ShiftModifier)
+
+        # ── Copy: Ctrl+C with selection, or Ctrl+Shift+C ─────────────
+        if ctrl and key == Qt.Key_C:
+            if self.textCursor().hasSelection() and not shift:
+                # Ctrl+C + selection → copy to clipboard
+                self.copy()
+                return
+            else:
+                # Ctrl+C without selection → SIGINT
+                self.sigint_req.emit()
+                return
+
+        # ── Paste: Ctrl+V or Ctrl+Shift+V ────────────────────────────
+        if ctrl and key == Qt.Key_V:
+            clipboard = QApplication.clipboard().text()
+            if clipboard:
+                self.char_written.emit(clipboard.encode("utf-8"))
+            return
+
+        # ── Ctrl+D → EOF ──────────────────────────────────────────────
+        if ctrl and key == Qt.Key_D:
+            self.char_written.emit(b"\x04")
+            return
+
+        # ── Ctrl+L → clear screen ─────────────────────────────────────
+        if ctrl and key == Qt.Key_L:
+            self.clear()
+            self._input_anchor = 0
+            self.char_written.emit(b"\x0c")   # also send to shell for PS1 redraw
+            return
+
+        # ── Ctrl+A → beginning of line ───────────────────────────────
+        if ctrl and key == Qt.Key_A:
+            self.char_written.emit(b"\x01")
+            return
+
+        # ── Ctrl+E → end of line ──────────────────────────────────────
+        if ctrl and key == Qt.Key_E:
+            self.char_written.emit(b"\x05")
+            return
+
+        # ── Ctrl+U → kill line ───────────────────────────────────────
+        if ctrl and key == Qt.Key_U:
+            self._clear_input()
+            self.char_written.emit(b"\x15")
+            return
+
+        # ── Ctrl+W → kill word ───────────────────────────────────────
+        if ctrl and key == Qt.Key_W:
+            self.char_written.emit(b"\x17")
+            return
+
+        # ── Tab → completion ─────────────────────────────────────────
+        if key == Qt.Key_Tab:
+            input_so_far = self._get_input_text()
+            self._clear_input()
+            self.char_written.emit((input_so_far + "\t").encode("utf-8"))
+            return
+
+        # ── Enter → send line ────────────────────────────────────────
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            text = self._get_input_text()
+            if text:
+                self._history.append(text)
+                self._hist_idx = len(self._history)
+            self.char_written.emit((text + "\n").encode("utf-8"))
+            return
+
+        # ── Backspace — only delete user's own input ─────────────────
+        if key == Qt.Key_Backspace:
+            if len(self.toPlainText()) > self._input_anchor:
+                super().keyPressEvent(event)
+            return
+
+        # ── Arrow up/down → history ───────────────────────────────────
+        if key == Qt.Key_Up:
+            self._nav_history(-1)
+            return
+        if key == Qt.Key_Down:
+            self._nav_history(1)
+            return
+
+        # ── Left arrow — don't go before anchor ──────────────────────
+        if key == Qt.Key_Left:
+            c = self.textCursor()
+            if c.position() > self._input_anchor:
+                super().keyPressEvent(event)
+            return
+
+        # ── Home → jump to anchor ─────────────────────────────────────
+        if key == Qt.Key_Home:
+            c = self.textCursor()
+            c.setPosition(self._input_anchor)
+            self.setTextCursor(c)
+            return
+
+        # ── Printable characters ──────────────────────────────────────
+        if event.text() and not ctrl:
+            self._ensure_cursor_at_end()
+            super().keyPressEvent(event)
+            return
+
+        # Everything else (page up/down for scroll, etc.)
+        super().keyPressEvent(event)
+
+    def _nav_history(self, direction: int):
+        if not self._history:
+            return
+        self._hist_idx = max(0, min(len(self._history) - 1,
+                                    self._hist_idx + direction))
+        self._clear_input()
+        entry = self._history[self._hist_idx]
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.setTextCursor(cursor)
+        # Insert history entry with default formatting
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(_DEFAULT_FG))
+        cursor.insertText(entry, fmt)
+
+    def mousePressEvent(self, event):
+        # Allow clicks anywhere for selection, but snap cursor to end for typing
+        super().mousePressEvent(event)
+        # Don't snap on right-click (context menu) or middle-click
+        if event.button() == Qt.LeftButton:
+            QTimer.singleShot(0, self._snap_if_before_anchor)
+
+    def _snap_if_before_anchor(self):
+        """If user clicked before the anchor (output area), snap to end."""
+        c = self.textCursor()
+        if not c.hasSelection() and c.position() < self._input_anchor:
+            c.movePosition(QTextCursor.End)
+            self.setTextCursor(c)
+
+    def contextMenuEvent(self, event):
+        from PyQt5.QtWidgets import QMenu, QAction
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background:#2a2a2a; color:#e0e0e0; border:1px solid #444; }
+            QMenu::item:selected { background:#3a5a8a; }
+        """)
+        copy_act  = menu.addAction("Copy")
+        paste_act = menu.addAction("Paste")
+        menu.addSeparator()
+        clear_act = menu.addAction("Clear")
+        copy_act.setEnabled(self.textCursor().hasSelection())
+        act = menu.exec_(event.globalPos())
+        if act == copy_act:
+            self.copy()
+        elif act == paste_act:
+            clipboard = QApplication.clipboard().text()
+            if clipboard:
+                self.char_written.emit(clipboard.encode("utf-8"))
+        elif act == clear_act:
+            self.clear()
+            self._input_anchor = 0
+
+
 # ── Single terminal pane ──────────────────────────────────────────────────────
 class TerminalPane(QWidget):
     """
-    One terminal session: a PTY-backed shell + display widget.
-    Emits  closed  when the shell exits or the pane is explicitly killed.
+    One terminal session: PTY-backed shell rendered in a unified TerminalDisplay.
+    Emits `closed` when the shell exits or the pane is killed.
     """
-    closed = pyqtSignal(object)   # passes self
+    closed = pyqtSignal(object)
 
     def __init__(self, cwd: str | None = None):
         super().__init__()
@@ -255,10 +484,16 @@ class TerminalPane(QWidget):
         self._master = None
         self._pid    = None
         self._reader = None
-        self._parser = AnsiParser()
-        self._history: list[str] = []
-        self._hist_idx = -1
-        self._input_start_pos = 0   # cursor position where current input begins
+        self._parser     = AnsiParser()
+        self._last_cols  = 80
+        self._last_rows  = 24
+        self._is_resizing = False
+
+        # Debounce resize: only send TIOCSWINSZ 300ms after the last resize event
+        self._resize_timer = QTimer()
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(300)
+        self._resize_timer.timeout.connect(self._flush_resize)
 
         self._build_ui()
         self._spawn_shell()
@@ -269,69 +504,23 @@ class TerminalPane(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._display = QTextEdit()
-        self._display.setReadOnly(True)
-        self._display.setFont(QFont("Monospace", 11))
-        self._display.setStyleSheet("""
-            QTextEdit {
-                background-color: #1a1a1a;
-                color: #e0e0e0;
-                border: none;
-                padding: 4px;
-                selection-background-color: #3a5a8a;
-            }
-        """)
-        self._display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # Input bar
-        input_bar = QWidget()
-        input_bar.setFixedHeight(32)
-        input_bar.setStyleSheet("background: #111111; border-top: 1px solid #333;")
-        bar_layout = QHBoxLayout(input_bar)
-        bar_layout.setContentsMargins(6, 2, 6, 2)
-        bar_layout.setSpacing(4)
-
-        self._prompt_label = QLabel("$")
-        self._prompt_label.setStyleSheet("color: #55FF55; font-family: Monospace; font-size: 11px;")
-        self._prompt_label.setFixedWidth(14)
-
-        self._input = QLineEdit()
-        self._input.setStyleSheet("""
-            QLineEdit {
-                background: transparent;
-                color: #e0e0e0;
-                border: none;
-                font-family: Monospace;
-                font-size: 11px;
-            }
-        """)
-        self._input.returnPressed.connect(self._send_input)
-        self._input.installEventFilter(self)
-
-        bar_layout.addWidget(self._prompt_label)
-        bar_layout.addWidget(self._input)
-
+        self._display = TerminalDisplay()
+        self._display.char_written.connect(self._write_to_pty)
+        self._display.sigint_req.connect(lambda: self._send_signal(signal.SIGINT))
         layout.addWidget(self._display)
-        layout.addWidget(input_bar)
-
-        self._input.setFocus()
+        self._display.setFocus()
 
     # ── shell spawning ────────────────────────────────────────────────
     def _spawn_shell(self):
         shell = shutil.which("bash") or shutil.which("sh") or "/bin/sh"
-
         self._master, slave = pty.openpty()
-
-        # Set terminal size (80×24 default)
         self._set_pty_size(80, 24)
 
-        # Make master non-blocking
         flags = fcntl.fcntl(self._master, fcntl.F_GETFL)
         fcntl.fcntl(self._master, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
         self._pid = os.fork()
         if self._pid == 0:
-            # ── child ──────────────────────────────────────────────
             os.close(self._master)
             os.setsid()
             fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
@@ -350,7 +539,6 @@ class TerminalPane(QWidget):
             os.execve(shell, [shell, "-i"], env)
             os._exit(1)
 
-        # ── parent ─────────────────────────────────────────────────
         os.close(slave)
         self._reader = _PtyReader(self._master)
         self._reader.data_ready.connect(self._on_data)
@@ -368,18 +556,41 @@ class TerminalPane(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if self._master is not None:
-            char_w = self._display.fontMetrics().horizontalAdvance("M")
-            char_h = self._display.fontMetrics().height()
-            if char_w > 0 and char_h > 0:
-                cols = max(10, self._display.width()  // char_w)
-                rows = max(4,  self._display.height() // char_h)
-                self._set_pty_size(cols, rows)
+        if self._master is None:
+            return
+        char_w = self._display.fontMetrics().horizontalAdvance("M")
+        char_h = self._display.fontMetrics().height()
+        if char_w > 0 and char_h > 0:
+            self._last_cols = max(10, self._display.width()  // char_w)
+            self._last_rows = max(4,  self._display.height() // char_h)
+        # Debounce: restart the timer on every resize event.
+        # _flush_resize fires only once, 300ms after the user stops dragging.
+        self._resize_timer.start()
 
-    # ── incoming data ─────────────────────────────────────────────────
+    def _flush_resize(self):
+        """Actually send TIOCSWINSZ after the resize settles."""
+        if self._master is None:
+            return
+        self._is_resizing = True
+        self._set_pty_size(self._last_cols, self._last_rows)
+        # Give bash a moment to emit its redrawn prompt, then swallow it
+        QTimer.singleShot(120, self._finish_resize)
+
+    def _finish_resize(self):
+        """
+        After bash redraws the prompt in response to SIGWINCH, trim any
+        duplicate prompt lines that were appended to the display.
+        We do this by truncating back to the last anchor point.
+        """
+        self._is_resizing = False
+
+    # ── incoming data from PTY ────────────────────────────────────────
     def _on_data(self, raw: bytes):
-        # Filter out common cursor/mode sequences we don't need to render
-        # but keep text + colour sequences
+        # While a resize is in flight, bash sends a redrawn prompt via SIGWINCH.
+        # Swallow that output entirely — we already have the prompt on screen.
+        if self._is_resizing:
+            return
+
         filtered = self._strip_cursor_sequences(raw)
         spans    = self._parser.feed(filtered)
 
@@ -387,103 +598,41 @@ class TerminalPane(QWidget):
         cursor.movePosition(QTextCursor.End)
 
         for text, fmt in spans:
-            # Normalise line endings:
-            #   \r\n  → \n   (Windows-style, safe)
-            #   \r     → ""   (bare CR = cursor-to-col-0 in a real terminal;
-            #                   in our QTextEdit it just causes duplicate lines
-            #                   so we strip it entirely — the shell redraws the
-            #                   prompt on the same line after a clear/resize and
-            #                   we don't want that to produce an extra blank line)
             text = text.replace("\r\n", "\n").replace("\r", "")
-
-            # Remove backspace sequences (simple overstrike removal)
             while "\x08" in text:
-                idx = text.index("\x08")
+                idx  = text.index("\x08")
                 text = text[:max(0, idx - 1)] + text[idx + 1:]
-
             if text:
                 cursor.insertText(text, fmt)
 
         self._display.setTextCursor(cursor)
         self._display.ensureCursorVisible()
+        # Lock: everything written by PTY is "output", user types after this
+        self._display._set_anchor()
 
     def _strip_cursor_sequences(self, raw: bytes) -> bytes:
-        """
-        Remove PTY sequences that mess up a QTextEdit display:
-        cursor movement, clear screen, alternate screen buffer, etc.
-        We keep SGR (colour) sequences intact.
-        """
         text = raw.decode("utf-8", errors="replace")
-        # Strip: cursor movement, erase, screen mode switches, etc.
-        # Keep:  \x1b[...m  (SGR colour)
-        def _replace(m):
-            final = m.group(2)
-            if final == "m":
-                return m.group(0)   # keep colour sequences
-            return ""               # drop everything else
-        cleaned = _ESC_RE.sub(_replace, text)
-        return cleaned.encode("utf-8")
+        def _keep_sgr(m):
+            return m.group(0) if m.group(2) == "m" else ""
+        return _ESC_RE.sub(_keep_sgr, text).encode("utf-8")
 
     def _on_shell_exit(self):
-        self._append_system_msg("\n[Process exited]\n")
+        cursor = self._display.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor("#888888"))
+        fmt.setFontItalic(True)
+        cursor.insertText("\n[Process exited]\n", fmt)
+        self._display.setTextCursor(cursor)
         self.closed.emit(self)
 
-    # ── sending input ─────────────────────────────────────────────────
-    def _send_input(self):
-        text = self._input.text()
-        self._input.clear()
-
-        if text:
-            self._history.append(text)
-            self._hist_idx = len(self._history)
-
-        cmd = text + "\n"
-        try:
-            os.write(self._master, cmd.encode("utf-8"))
-        except OSError:
-            pass
-
-    def eventFilter(self, obj, event):
-        from PyQt5.QtCore import QEvent
-        from PyQt5.QtGui import QKeyEvent
-        if obj is self._input and event.type() == QEvent.KeyPress:
-            key = event.key()
-            if key == Qt.Key_Up:
-                self._nav_history(-1)
-                return True
-            if key == Qt.Key_Down:
-                self._nav_history(1)
-                return True
-            if key == Qt.Key_C and event.modifiers() & Qt.ControlModifier:
-                self._send_signal(signal.SIGINT)
-                return True
-            if key == Qt.Key_D and event.modifiers() & Qt.ControlModifier:
-                try:
-                    os.write(self._master, b"\x04")  # EOF
-                except OSError:
-                    pass
-                return True
-            if key == Qt.Key_L and event.modifiers() & Qt.ControlModifier:
-                self._display.clear()
-                return True
-            if key == Qt.Key_Tab:
-                # Send TAB to shell for completion
-                try:
-                    text = self._input.text()
-                    os.write(self._master, (text + "\t").encode())
-                    self._input.clear()
-                except OSError:
-                    pass
-                return True
-        return super().eventFilter(obj, event)
-
-    def _nav_history(self, direction: int):
-        if not self._history:
-            return
-        self._hist_idx = max(0, min(len(self._history) - 1,
-                                    self._hist_idx + direction))
-        self._input.setText(self._history[self._hist_idx])
-        self._input.end(False)
+    # ── writing to PTY ────────────────────────────────────────────────
+    def _write_to_pty(self, data: bytes):
+        if self._master is not None:
+            try:
+                os.write(self._master, data)
+            except OSError:
+                pass
 
     def _send_signal(self, sig):
         if self._pid:
@@ -492,27 +641,18 @@ class TerminalPane(QWidget):
             except (OSError, ProcessLookupError):
                 pass
 
-    # ── helpers ───────────────────────────────────────────────────────
-    def _append_system_msg(self, msg: str):
-        cursor = self._display.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor("#888888"))
-        fmt.setFontItalic(True)
-        cursor.insertText(msg, fmt)
-        self._display.setTextCursor(cursor)
-        self._display.ensureCursorVisible()
-
+    # ── public helpers ────────────────────────────────────────────────
     def set_cwd(self, path: str):
-        """Change the working directory of the running shell."""
         if os.path.isdir(path) and self._master:
             try:
                 os.write(self._master, f'cd "{path}"\n'.encode())
             except OSError:
                 pass
 
+    def focus_input(self):
+        self._display.setFocus()
+
     def kill(self):
-        """Terminate the shell process and reader thread."""
         if self._reader:
             self._reader.stop()
             self._reader.wait(500)
@@ -529,9 +669,6 @@ class TerminalPane(QWidget):
             except OSError:
                 pass
             self._master = None
-
-    def focus_input(self):
-        self._input.setFocus()
 
 
 # ── Tab manager ───────────────────────────────────────────────────────────────

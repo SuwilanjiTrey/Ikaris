@@ -98,6 +98,9 @@ class CustomFileSystemModel(QFileSystemModel):
         self.android_folder =QIcon('images/fileIcons/androidFolder.png')
         self.json_icon =QIcon('images/fileIcons/json.png')
         self.linux_icon =QIcon('images/fileIcons/linux.png')
+        self.readme_icon = QIcon('images/fileIcons/readme.png')
+        self.markdown_icon = QIcon('images/fileIcons/md.png')
+        self.pom_icon = QIcon('images/fileIcons/pom.png')
 
 
     def data(self, index, role):
@@ -119,6 +122,8 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.kts_icon
             elif file_name.endswith('.toml'):
                 return self.toml_icon
+            elif file_name.endswith('pom.xml'):
+                return self.pom_icon
             elif file_name.endswith('.properties'):
                 return self.properties_icon
             elif file_name.endswith('.gitignore'):
@@ -157,6 +162,10 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.json_icon
             elif file_name.endswith('.desktop') or file_name.endswith('.deb'):
                 return self.linux_icon
+            elif file_name.lower().startswith('readme.md'):
+                return self.readme_icon
+            elif file_name.endswith('.md'):
+                return self.markdown_icon
         # For all other cases, use the default implementation
         return super().data(index, role)
 

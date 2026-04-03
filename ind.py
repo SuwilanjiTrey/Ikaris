@@ -22,7 +22,9 @@ from utils.git_bridge import GitBridge
 class WebBridge(QObject, GitBridge):
     def __init__(self, CodeEditor):
         QObject.__init__(self)
+        GitBridge.__init__(self)
         self.mainWindow = CodeEditor
+
     
     @pyqtSlot()
     def testing(self):
@@ -36,20 +38,6 @@ class WebBridge(QObject, GitBridge):
     def install_plugin(self, name):
         print("checking plugin")
         
-    @pyqtSlot(str)
-    def git_commit(self, message):
-        print("Commit:", message)
-        os.system(f'git commit -m "{message}"')
-
-    @pyqtSlot()
-    def git_push(self):
-        print("Pushing...")
-        os.system("git push")
-
-    @pyqtSlot()
-    def git_pull(self):
-        print("Pulling...")
-        os.system("git pull")
         
     @pyqtSlot(str)    
     def save_settings(settings):
@@ -110,6 +98,9 @@ class CustomFileSystemModel(QFileSystemModel):
         self.android_folder =QIcon('images/fileIcons/androidFolder.png')
         self.json_icon =QIcon('images/fileIcons/json.png')
         self.linux_icon =QIcon('images/fileIcons/linux.png')
+        self.readme_icon = QIcon('images/fileIcons/readme.png')
+        self.markdown_icon = QIcon('images/fileIcons/md.png')
+        self.pom_icon = QIcon('images/fileIcons/pom.png')
 
 
     def data(self, index, role):
@@ -131,6 +122,8 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.kts_icon
             elif file_name.endswith('.toml'):
                 return self.toml_icon
+            elif file_name.endswith('pom.xml'):
+                return self.pom_icon
             elif file_name.endswith('.properties'):
                 return self.properties_icon
             elif file_name.endswith('.gitignore'):
@@ -169,6 +162,10 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.json_icon
             elif file_name.endswith('.desktop') or file_name.endswith('.deb'):
                 return self.linux_icon
+            elif file_name.lower().startswith('readme.md'):
+                return self.readme_icon
+            elif file_name.endswith('.md'):
+                return self.markdown_icon
         # For all other cases, use the default implementation
         return super().data(index, role)
 
@@ -487,18 +484,12 @@ class CodeEditor(QMainWindow):
 
         # Create bridge
         self.bridge = WebBridge(self)
-        self.openFiles = WebBridge(self)
-        self.updateFolder = WebBridge(self)
-        self.install_plugin = WebBridge(self)
-        self.save_settings = WebBridge(self)
+
         
 
         # Create channel
         self.channel = QWebChannel()
         self.channel.registerObject("WebBridge", self.bridge)
-        self.channel.registerObject("WebBridge", self.openFiles)
-        self.channel.registerObject("WebBridge", self.install_plugin)
-        self.channel.registerObject("WebBridge", self.save_settings)
 
         ## landing page
         self.landing_page = QWebEngineView()
