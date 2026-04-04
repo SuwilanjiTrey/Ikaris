@@ -21,7 +21,7 @@ PALETTE = {
     "string":       "#C3E88D",   # green
     "string2":      "#F78C6C",   # orange  (f-strings / template literals)
     "number":       "#F78C6C",   # orange
-    "comment":      "#546E7A",   # muted blue-grey
+    "comment":      "#C3E88D",   # muted blue-grey  == #546E7A 
     "function":     "#82AAFF",   # blue
     "class_name":   "#FFCB6B",   # amber
     "decorator":    "#C792EA",   # purple

@@ -17,6 +17,7 @@ from utils.highlighter import get_highlighter, check_syntax
 from components.Terminal import TerminalManager
 from utils.tree_features import setup_tree_context_menu, toolbar_new_file
 from utils.git_bridge import GitBridge
+from utils.themes import ThemeEngine
 
 
 class WebBridge(QObject, GitBridge):
@@ -42,6 +43,10 @@ class WebBridge(QObject, GitBridge):
     @pyqtSlot(str)    
     def save_settings(settings):
         print("saving settings")
+        
+    @pyqtSlot()
+    def open_theme_studio(self):
+        self.mainWindow.show_themes_page()  # toggle themes page visible
 
         
 ##################### DOCS #########################
@@ -146,13 +151,13 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.CPP_icon
             elif file_name.endswith('.py'):
                 return self.python_icon
-            elif file_name.endswith('.png') or file_name.endswith('.gif') or file_name.endswith('.jpg') or file_name.endswith('.bmp') or file_name.endswith('.jpeg') or file_name.endswith('.webp'):
+            elif file_name.endswith(('.png','.gif','.jpg','.bmp','.jpeg','.webp')):
                 return self.image_icon
             elif file_name.endswith('.tsx'):
                 return self.react_icon
             elif file_name.endswith('.jsx'):
                 return self.react_icon
-            elif file_name.endswith('.sql') or file_name.endswith('.db'):
+            elif file_name.endswith(('.sql','.db')):
                 return self.database_icon
             elif file_name.endswith('.apk'):
                 return self.android_icon
@@ -178,7 +183,13 @@ class CodeEditor(QMainWindow):
         super().__init__()
         self.plugins_visible = False
         self.github_visible = False
-        #self.themes_dir = os.path.join(self.plugins_dir, 'themes')
+        
+        
+        ############   Themes
+        self.theme_engine = ThemeEngine(self)
+        
+        
+        
         self.settings_visible = False
         #self.plugin_manager = PluginManager()  # Initialize plugin manager
         self.base_directory = None
@@ -490,6 +501,7 @@ class CodeEditor(QMainWindow):
         # Create channel
         self.channel = QWebChannel()
         self.channel.registerObject("WebBridge", self.bridge)
+        self.channel.registerObject("ThemeEngine", self.theme_engine)
 
         ## landing page
         self.landing_page = QWebEngineView()
@@ -512,6 +524,13 @@ class CodeEditor(QMainWindow):
         self.settings_page = QWebEngineView()
         self.settings_page.page().setWebChannel(self.channel)
         self.settings_page.load(QUrl.fromLocalFile(os.path.abspath("web/settings.html")))
+        
+        ### Themes page
+        self.themes_page = QWebEngineView()
+        self.themes_page.page().setWebChannel(self.channel)
+        self.themes_page.load(QUrl.fromLocalFile(os.path.abspath("web/themes.html")))
+        self.theme_engine.setup(self.themes_page)
+        self.theme_engine.apply_saved_theme()   # applies on startup
         
         
         

@@ -1,221 +1,798 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Nova IDE - Settings</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>Ikaris — Settings</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+:root {
+  --bg0:    #0d1117;
+  --bg1:    #161b22;
+  --bg2:    #21262d;
+  --bg3:    #30363d;
+  --border: #30363d;
+  --text:   #c9d1d9;
+  --muted:  #6e7681;
+  --accent: #238636;
+  --blue:   #1f6feb;
+  --radius: 8px;
+}
 
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Inter', sans-serif;
-    }
+html, body { height: 100%; background: var(--bg0); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; }
 
-    body {
-      background: #0b0f1a;
-      color: #e5e7eb;
-    }
+.layout { display: flex; height: 100%; overflow: hidden; }
 
-    .container {
-      max-width: 900px;
-      margin: auto;
-      padding: 40px 20px;
-    }
+/* ── Sidebar nav ── */
+.sidenav {
+  width: 180px;
+  flex-shrink: 0;
+  background: var(--bg1);
+  border-right: 1px solid var(--border);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 
-    h1 {
-      font-size: 28px;
-      margin-bottom: 30px;
-    }
+.sidenav .logo {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
 
-    .section {
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 20px;
-    }
+.navitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  transition: background .15s, color .15s;
+  user-select: none;
+}
+.navitem:hover { background: var(--bg2); color: var(--text); }
+.navitem.active { background: var(--bg2); color: #fff; font-weight: 600; }
+.navitem .icon { width: 18px; text-align: center; font-size: 14px; }
 
-    .section h2 {
-      font-size: 16px;
-      margin-bottom: 15px;
-      color: #9ca3af;
-    }
+/* ── Content ── */
+.content { flex: 1; overflow-y: auto; padding: 24px 28px; }
 
-    .setting {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 15px;
-    }
+.page { display: none; }
+.page.active { display: block; }
 
-    .setting label {
-      font-size: 14px;
-    }
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.page-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 24px;
+}
 
-    input, select {
-      background: #020617;
-      border: 1px solid #1f2937;
-      color: white;
-      padding: 6px 10px;
-      border-radius: 6px;
-      outline: none;
-    }
+/* ── Sections ── */
+.section {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
 
-    input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-    }
+.section-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-    .save-container {
-      text-align: right;
-      margin-top: 20px;
-    }
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+.setting-row:last-child { border-bottom: none; }
 
-    .btn {
-      padding: 10px 16px;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-    }
+.setting-info { flex: 1; }
+.setting-label { font-size: 13px; color: var(--text); margin-bottom: 2px; }
+.setting-desc  { font-size: 11px; color: var(--muted); }
 
-    .primary {
-      background: #6366f1;
-      color: white;
-    }
+/* controls */
+input[type=text],
+input[type=number],
+input[type=password],
+select {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+  min-width: 180px;
+  transition: border-color .15s;
+}
+input:focus, select:focus { border-color: var(--blue); }
+input[type=number] { min-width: 80px; }
 
-  </style>
+/* toggle */
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg3);
+  border-radius: 22px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  left: 3px; bottom: 3px;
+  background: var(--muted);
+  border-radius: 50%;
+  transition: transform .2s, background .2s;
+}
+.toggle input:checked + .slider { background: var(--accent); }
+.toggle input:checked + .slider::before { transform: translateX(18px); background: #fff; }
+
+/* theme hero card */
+.theme-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.theme-hero-swatches {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  height: 40px;
+  width: 120px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+.theme-hero-swatches div { flex: 1; }
+.theme-hero-info { flex: 1; }
+.theme-hero-name { font-size: 14px; font-weight: 600; color: #fff; }
+.theme-hero-tag  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.open-btn {
+  background: var(--blue);
+  border: none;
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+  transition: background .15s;
+}
+.open-btn:hover { background: #388bfd; }
+
+/* save bar */
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg1);
+  border-top: 1px solid var(--border);
+  padding: 12px 28px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 -28px -24px;
+}
+.btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg2);
+}
+.btn:hover { background: var(--bg3); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #2ea043; }
+
+/* toast */
+#toast {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+  z-index: 999;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.ok { border-color: var(--accent); color: #3fb950; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+</style>
 </head>
 <body>
 
-<div class="container">
+<div class="layout">
 
-  <h1>⚙️ Settings</h1>
+  <!-- ── Sidebar ── -->
+  <nav class="sidenav">
+    <div class="logo">⚙ Settings</div>
+    <div class="navitem active" onclick="showPage('appearance')" id="nav-appearance">
+      <span class="icon">🎨</span> Appearance
+    </div>
+    <div class="navitem" onclick="showPage('editor')" id="nav-editor">
+      <span class="icon">✏️</span> Editor
+    </div>
+    <div class="navitem" onclick="showPage('git')" id="nav-git">
+      <span class="icon">⎇</span> Git
+    </div>
+    <div class="navitem" onclick="showPage('terminal')" id="nav-terminal">
+      <span class="icon">⬛</span> Terminal
+    </div>
+    <div class="navitem" onclick="showPage('plugins')" id="nav-plugins">
+      <span class="icon">🧩</span> Plugins
+    </div>
+    <div class="navitem" onclick="showPage('keybindings')" id="nav-keybindings">
+      <span class="icon">⌨</span> Keybindings
+    </div>
+    <div class="navitem" onclick="showPage('about')" id="nav-about">
+      <span class="icon">ℹ</span> About
+    </div>
+  </nav>
 
-  <!-- THEME -->
-  <div class="section">
-    <h2>Appearance</h2>
+  <!-- ── Pages ── -->
+  <div class="content">
 
-    <div class="setting">
-      <label>Theme</label>
-      <select id="theme">
-        <option>Dark</option>
-        <option>Light</option>
-        <option>System</option>
-      </select>
+    <!-- APPEARANCE -->
+    <div class="page active" id="page-appearance">
+      <div class="page-title">Appearance</div>
+      <div class="page-sub">Themes, fonts and visual style</div>
+
+      <!-- Theme hero -->
+      <div class="section">
+        <div class="section-head">🎨 Current Theme</div>
+        <div class="theme-hero">
+          <div class="theme-hero-swatches" id="heroSwatches">
+            <div style="background:#1a1a1a"></div>
+            <div style="background:#1e1e1e"></div>
+            <div style="background:#C792EA"></div>
+            <div style="background:#C3E88D"></div>
+          </div>
+          <div class="theme-hero-info">
+            <div class="theme-hero-name" id="heroName">Ikaris Dark</div>
+            <div class="theme-hero-tag"  id="heroTag">Built-in</div>
+          </div>
+          <button class="open-btn" onclick="openThemeStudio()">Open Theme Studio →</button>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Quick switch</div>
+            <div class="setting-desc">Jump between themes without opening Theme Studio</div>
+          </div>
+          <select id="quickTheme" onchange="quickSwitchTheme(this.value)">
+            <option>Loading…</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">🔤 Typography</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Editor Font</div>
+            <div class="setting-desc">Monospace font used in code files</div>
+          </div>
+          <input type="text" id="editorFont" placeholder="Courier New" value="Courier New" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Editor Font Size</div>
+            <div class="setting-desc">In points (pt)</div>
+          </div>
+          <input type="number" id="editorFontSize" value="12" min="8" max="32" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">UI Font Size</div>
+            <div class="setting-desc">Menus, sidebar, labels</div>
+          </div>
+          <input type="number" id="uiFontSize" value="12" min="8" max="20" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">🪟 Layout</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Show Line Numbers</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="lineNumbers" checked><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Show Minimap</div>
+            <div class="setting-desc">Scroll overview on the right edge</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="minimap"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Compact Sidebar</div>
+            <div class="setting-desc">Reduce sidebar button size</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="compactSidebar"><span class="slider"></span></label>
+        </div>
+      </div>
     </div>
 
-    <div class="setting">
-      <label>Font Size</label>
-      <input type="number" id="fontSize" value="14">
+    <!-- EDITOR -->
+    <div class="page" id="page-editor">
+      <div class="page-title">Editor</div>
+      <div class="page-sub">Code editing behaviour and defaults</div>
+
+      <div class="section">
+        <div class="section-head">💾 Saving</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Auto Save</div>
+            <div class="setting-desc">Save files automatically after editing pauses</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="autosave"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Auto Save Delay (ms)</div>
+            <div class="setting-desc">Milliseconds of inactivity before auto-save fires</div>
+          </div>
+          <input type="number" id="autosaveDelay" value="1000" min="200" max="10000" step="100" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Trim Trailing Whitespace on Save</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="trimWhitespace" checked><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Expand Tabs to Spaces (Python)</div>
+            <div class="setting-desc">Runs <code style="color:#C3E88D">expand -t 4</code> on .py save</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="expandTabs" checked><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">📐 Formatting</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Tab Size</div>
+            <div class="setting-desc">Number of spaces per indent level</div>
+          </div>
+          <input type="number" id="tabSize" value="4" min="1" max="8" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Word Wrap</div>
+            <div class="setting-desc">Wrap long lines to fit the editor width</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="wordWrap" checked><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Highlight Current Line</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="highlightLine" checked><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">🔍 Syntax</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Enable Syntax Highlighting</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="syntaxHighlight" checked><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Live Syntax Check</div>
+            <div class="setting-desc">Show error/warning dots in the gutter as you type</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="liveCheck" checked><span class="slider"></span></label>
+        </div>
+      </div>
     </div>
 
-    <div class="setting">
-      <label>Show Line Numbers</label>
-      <input type="checkbox" id="lineNumbers" checked>
+    <!-- GIT -->
+    <div class="page" id="page-git">
+      <div class="page-title">Git</div>
+      <div class="page-sub">Identity and integration defaults</div>
+
+      <div class="section">
+        <div class="section-head">👤 Identity</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Username</div>
+          </div>
+          <input type="text" id="gitUser" placeholder="Your Name" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Email</div>
+          </div>
+          <input type="text" id="gitEmail" placeholder="you@example.com" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">🔑 Authentication</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Personal Access Token</div>
+            <div class="setting-desc">Used for push/pull over HTTPS. Stored locally only.</div>
+          </div>
+          <input type="password" id="gitToken" placeholder="ghp_…" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">⚙ Behaviour</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Auto Pull on Project Open</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="autoPull"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Default Branch</div>
+          </div>
+          <input type="text" id="defaultBranch" placeholder="main" value="main" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Sign Commits (GPG)</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="gpgSign"><span class="slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- TERMINAL -->
+    <div class="page" id="page-terminal">
+      <div class="page-title">Terminal</div>
+      <div class="page-sub">Shell and terminal emulator settings</div>
+
+      <div class="section">
+        <div class="section-head">🐚 Shell</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Shell Path</div>
+            <div class="setting-desc">Full path to the shell executable</div>
+          </div>
+          <input type="text" id="shellPath" placeholder="/bin/bash" value="/bin/bash" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Shell Args</div>
+            <div class="setting-desc">Extra arguments passed to the shell</div>
+          </div>
+          <input type="text" id="shellArgs" placeholder="-i" value="-i" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">🎨 Appearance</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Terminal Font</div>
+          </div>
+          <input type="text" id="termFont" placeholder="Monospace" value="Monospace" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Terminal Font Size</div>
+          </div>
+          <input type="number" id="termFontSize" value="11" min="8" max="24" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Scroll History (lines)</div>
+          </div>
+          <input type="number" id="termScrollback" value="10000" min="100" max="100000" step="100" />
+        </div>
+      </div>
+    </div>
+
+    <!-- PLUGINS -->
+    <div class="page" id="page-plugins">
+      <div class="page-title">Plugins</div>
+      <div class="page-sub">Manage IDE extensions</div>
+
+      <div class="section">
+        <div class="section-head">🧩 Plugin Settings</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Enable Plugins</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="enablePlugins" checked><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Auto Update Plugins</div>
+            <div class="setting-desc">Check for plugin updates on startup</div>
+          </div>
+          <label class="toggle"><input type="checkbox" id="autoUpdatePlugins"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Plugin Directory</div>
+            <div class="setting-desc">Where to look for installed plugins</div>
+          </div>
+          <input type="text" id="pluginDir" placeholder="~/.ikaris/plugins" />
+        </div>
+      </div>
+    </div>
+
+    <!-- KEYBINDINGS -->
+    <div class="page" id="page-keybindings">
+      <div class="page-title">Keybindings</div>
+      <div class="page-sub">Current keyboard shortcuts (read-only for now)</div>
+
+      <div class="section">
+        <div class="section-head">📋 Shortcuts</div>
+        <div id="keybindingsList"></div>
+      </div>
+    </div>
+
+    <!-- ABOUT -->
+    <div class="page" id="page-about">
+      <div class="page-title">About</div>
+      <div class="page-sub">Ikaris Dev Studio</div>
+
+      <div class="section">
+        <div class="section-head">ℹ Info</div>
+        <div class="setting-row">
+          <div class="setting-info"><div class="setting-label">Version</div></div>
+          <span style="color:var(--muted);font-family:monospace">2024-V4</span>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info"><div class="setting-label">Engine</div></div>
+          <span style="color:var(--muted)">PyQt5 + QWebEngine</span>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info"><div class="setting-label">Config directory</div></div>
+          <span style="color:var(--muted);font-family:monospace" id="configDir">~/.ikaris/</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="save-bar">
+      <button class="btn" onclick="loadSettings()">↩ Reset</button>
+      <button class="btn primary" onclick="saveSettings()">💾 Save Settings</button>
     </div>
   </div>
-
-  <!-- EDITOR -->
-  <div class="section">
-    <h2>Editor</h2>
-
-    <div class="setting">
-      <label>Auto Save</label>
-      <input type="checkbox" id="autosave">
-    </div>
-
-    <div class="setting">
-      <label>Tab Size</label>
-      <input type="number" id="tabSize" value="4">
-    </div>
-
-    <div class="setting">
-      <label>Word Wrap</label>
-      <input type="checkbox" id="wordWrap" checked>
-    </div>
-  </div>
-
-  <!-- GIT -->
-  <div class="section">
-    <h2>Git</h2>
-
-    <div class="setting">
-      <label>Username</label>
-      <input type="text" id="gitUser" placeholder="Your name">
-    </div>
-
-    <div class="setting">
-      <label>Email</label>
-      <input type="text" id="gitEmail" placeholder="your@email.com">
-    </div>
-
-    <div class="setting">
-      <label>Auto Pull on Start</label>
-      <input type="checkbox" id="autoPull">
-    </div>
-  </div>
-
-  <!-- PLUGINS -->
-  <div class="section">
-    <h2>Plugins</h2>
-
-    <div class="setting">
-      <label>Enable Plugins</label>
-      <input type="checkbox" id="enablePlugins" checked>
-    </div>
-
-    <div class="setting">
-      <label>Auto Update Plugins</label>
-      <input type="checkbox" id="autoUpdate">
-    </div>
-  </div>
-
-  <!-- SAVE -->
-  <div class="save-container">
-    <button class="btn primary" onclick="saveSettings()">Save Settings</button>
-  </div>
-
 </div>
 
-<script>
-let handler;
+<div id="toast"></div>
 
-// Connect to PyQt
+<script>
+// ─────────────────────────────────────────────────────────────────
+// Bridge
+// ─────────────────────────────────────────────────────────────────
+let bridge = null;
+let themeBridge = null;
+
 if (typeof qt !== "undefined") {
-  new QWebChannel(qt.webChannelTransport, function(channel) {
-    handler = channel.objects.WebBridge;
+  new QWebChannel(qt.webChannelTransport, ch => {
+    bridge      = ch.objects.WebBridge;
+    themeBridge = ch.objects.ThemeEngine;
+    init();
   });
+} else {
+  setTimeout(init, 100);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Nav
+// ─────────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.navitem').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${id}`).classList.add('active');
+  document.getElementById(`nav-${id}`).classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────
+function init() {
+  buildKeybindingsTable();
+  if (themeBridge) {
+    themeBridge.get_all_themes(raw => {
+      const themes = JSON.parse(raw);
+      const sel = document.getElementById('quickTheme');
+      sel.innerHTML = themes.map(t =>
+        `<option value="${esc(t.name)}">${esc(t.name)}</option>`
+      ).join('');
+    });
+    themeBridge.get_current_theme(raw => {
+      const t = JSON.parse(raw);
+      updateHero(t);
+      document.getElementById('editorFont').value     = t.editor_font      || 'Courier New';
+      document.getElementById('editorFontSize').value = t.editor_font_size || 12;
+      document.getElementById('uiFontSize').value     = t.ui_font_size     || 12;
+    });
+    themeBridge.get_settings(raw => {
+      populateSettings(JSON.parse(raw));
+    });
+  }
+}
+
+function updateHero(t) {
+  document.getElementById('heroName').textContent = t.name || 'Unknown';
+  document.getElementById('heroTag').textContent  = t.builtin ? 'Built-in' : 'Custom';
+  const sw = document.getElementById('heroSwatches');
+  const cols = [t.sidebar_bg, t.editor_bg, t.syn_keyword, t.syn_string];
+  sw.innerHTML = cols.map(c => `<div style="background:${c||'#333'}"></div>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Settings population
+// ─────────────────────────────────────────────────────────────────
+const SETTING_FIELDS = [
+  ['lineNumbers', 'bool'], ['minimap', 'bool'], ['compactSidebar', 'bool'],
+  ['autosave', 'bool'], ['autosaveDelay', 'num'], ['trimWhitespace', 'bool'],
+  ['expandTabs', 'bool'], ['tabSize', 'num'], ['wordWrap', 'bool'],
+  ['highlightLine', 'bool'], ['syntaxHighlight', 'bool'], ['liveCheck', 'bool'],
+  ['gitUser', 'str'], ['gitEmail', 'str'], ['gitToken', 'str'],
+  ['autoPull', 'bool'], ['defaultBranch', 'str'], ['gpgSign', 'bool'],
+  ['shellPath', 'str'], ['shellArgs', 'str'],
+  ['termFont', 'str'], ['termFontSize', 'num'], ['termScrollback', 'num'],
+  ['enablePlugins', 'bool'], ['autoUpdatePlugins', 'bool'], ['pluginDir', 'str'],
+];
+
+function populateSettings(data) {
+  for (const [id, type] of SETTING_FIELDS) {
+    const el = document.getElementById(id);
+    if (!el || !(id in data)) continue;
+    if (type === 'bool') el.checked = !!data[id];
+    else el.value = data[id];
+  }
+  if (data.quick_theme) document.getElementById('quickTheme').value = data.quick_theme;
+}
+
+function loadSettings() {
+  if (themeBridge) {
+    themeBridge.get_settings(raw => populateSettings(JSON.parse(raw)));
+  }
 }
 
 function saveSettings() {
-  const settings = {
-    theme: document.getElementById("theme").value,
-    fontSize: document.getElementById("fontSize").value,
-    lineNumbers: document.getElementById("lineNumbers").checked,
-    autosave: document.getElementById("autosave").checked,
-    tabSize: document.getElementById("tabSize").value,
-    wordWrap: document.getElementById("wordWrap").checked,
-    gitUser: document.getElementById("gitUser").value,
-    gitEmail: document.getElementById("gitEmail").value,
-    autoPull: document.getElementById("autoPull").checked,
-    enablePlugins: document.getElementById("enablePlugins").checked,
-    autoUpdate: document.getElementById("autoUpdate").checked
-  };
-
-  console.log("Saving settings:", settings);
-
-  if (handler) {
-    handler.save_settings(JSON.stringify(settings));
+  const data = {};
+  for (const [id, type] of SETTING_FIELDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    data[id] = type === 'bool' ? el.checked : (type === 'num' ? +el.value : el.value);
   }
 
-  alert("Settings saved!");
+  // Typography changes → push to theme engine
+  const font    = document.getElementById('editorFont').value;
+  const sz      = +document.getElementById('editorFontSize').value;
+  const uiSz    = +document.getElementById('uiFontSize').value;
+  data.editor_font      = font;
+  data.editor_font_size = sz;
+  data.ui_font_size     = uiSz;
+
+  if (themeBridge) {
+    themeBridge.save_settings_json(JSON.stringify(data));
+  } else if (bridge) {
+    bridge.save_settings(JSON.stringify(data));
+  }
+
+  toast('Settings saved ✓', 'ok');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Theme actions
+// ─────────────────────────────────────────────────────────────────
+function openThemeStudio() {
+  if (bridge) bridge.open_theme_studio();
+  // Fallback: try to navigate  
+  window.location.href = 'themes.html';
+}
+
+function quickSwitchTheme(name) {
+  if (themeBridge) {
+    themeBridge.apply_theme_by_name(name);
+    themeBridge.get_current_theme(raw => updateHero(JSON.parse(raw)));
+    toast(`Applied: ${name}`, 'ok');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Keybindings table
+// ─────────────────────────────────────────────────────────────────
+const KEYBINDINGS = [
+  ['Ctrl+S',         'Save current file'],
+  ['Ctrl+Shift+S',   'Save all files'],
+  ['Ctrl+N',         'New file'],
+  ['Ctrl+Shift+N',   'New project'],
+  ['Ctrl+Shift+O',   'Open project folder'],
+  ['Ctrl+B',         'Toggle file tree'],
+  ['Ctrl+T',         'Toggle terminal'],
+  ['Ctrl+F',         'Find & Replace'],
+  ['Ctrl+Z',         'Undo'],
+  ['Ctrl+Y',         'Redo'],
+  ['Ctrl+G',         'Git panel'],
+  ['Ctrl+R',         'Run code'],
+  ['Ctrl+Q',         'Settings'],
+  ['Ctrl+Shift+I',   'AI assistant'],
+  ['Del',            'Delete selected file'],
+];
+
+function buildKeybindingsTable() {
+  const list = document.getElementById('keybindingsList');
+  list.innerHTML = KEYBINDINGS.map(([key, desc]) => `
+    <div class="setting-row">
+      <div class="setting-info"><div class="setting-label">${desc}</div></div>
+      <code style="background:var(--bg2);padding:3px 10px;border-radius:5px;
+                   font-family:monospace;font-size:12px;border:1px solid var(--border)">${key}</code>
+    </div>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let _tt = null;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(_tt);
+  _tt = setTimeout(() => { el.className = ''; }, 2800);
 }
 </script>
-
 </body>
 </html>

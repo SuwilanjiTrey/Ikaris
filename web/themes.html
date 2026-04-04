@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ikaris — Theme Studio</title>
+<style>
+/* ─── Reset & base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg0:    #0d1117;
+  --bg1:    #161b22;
+  --bg2:    #21262d;
+  --bg3:    #30363d;
+  --border: #30363d;
+  --text:   #c9d1d9;
+  --muted:  #6e7681;
+  --accent: #238636;
+  --blue:   #1f6feb;
+  --radius: 8px;
+  --mono:   'Cascadia Code','JetBrains Mono','Fira Code',monospace;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ─── Top bar ───────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.topbar h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
+.topbar .sub { font-size: 11px; color: var(--muted); }
+.spacer { flex: 1; }
+
+/* ─── Main layout ───────────────────────────────────────────────── */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── LEFT — gallery + saved ────────────────────────────────────── */
+.left {
+  width: 230px;
+  flex-shrink: 0;
+  background: var(--bg1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.left-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.ltab {
+  flex: 1;
+  padding: 9px 6px;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  user-select: none;
+  transition: color .15s;
+}
+.ltab:hover { color: var(--text); }
+.ltab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+.theme-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.theme-card {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color .2s, transform .1s;
+  position: relative;
+}
+.theme-card:hover { border-color: var(--blue); }
+.theme-card.active { border-color: var(--accent); }
+.theme-card.active::after {
+  content: '✓';
+  position: absolute;
+  top: 6px; right: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.theme-swatch {
+  display: flex;
+  height: 36px;
+}
+.swatch-bar { flex: 1; }
+
+.theme-label {
+  padding: 7px 10px;
+  background: var(--bg2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.theme-label .name { font-size: 12px; font-weight: 600; }
+.theme-label .tag {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--muted);
+}
+.theme-label .tag.custom { background: #1a3828; color: #3fb950; }
+
+.theme-actions {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+}
+.ta-btn {
+  flex: 1;
+  background: var(--bg3);
+  border: none;
+  color: var(--text);
+  padding: 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.ta-btn:hover { background: var(--blue); color: #fff; }
+.ta-btn.danger:hover { background: #da3633; }
+
+/* ─── MIDDLE — editor ───────────────────────────────────────────── */
+.editor-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg0);
+}
+
+.editor-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .7px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin: 20px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.color-row:hover { border-color: var(--blue); }
+
+.color-swatch {
+  width: 28px; height: 28px;
+  border-radius: 5px;
+  border: 2px solid rgba(255,255,255,.1);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+/* hide native picker but keep it functional */
+.color-row input[type=color] {
+  position: absolute;
+  opacity: 0;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+}
+.color-info { flex: 1; min-width: 0; }
+.color-label { font-size: 11px; color: var(--text); }
+.color-hex {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* font row */
+.font-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+.font-row label { font-size: 11px; color: var(--muted); flex: 1; }
+.font-row input[type=text],
+.font-row input[type=number] {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 12px;
+  width: 160px;
+  outline: none;
+  font-family: var(--mono);
+}
+.font-row input:focus { border-color: var(--blue); }
+.font-row input[type=number] { width: 60px; }
+
+/* name row */
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg1);
+  border: 2px solid var(--blue);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+}
+.name-row label { font-size: 12px; font-weight: 600; }
+.name-row input {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: #fff;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 13px;
+  outline: none;
+}
+.name-row input:focus { border-color: var(--blue); }
+
+/* action bar */
+.action-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--bg1);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.btn {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg2);
+  transition: background .15s, border-color .15s;
+}
+.btn:hover { background: var(--bg3); border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #2ea043; }
+.btn.blue { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.blue:hover { background: #388bfd; }
+
+/* ─── RIGHT — IDE preview ───────────────────────────────────────── */
+.preview-panel {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.preview-header {
+  padding: 8px 14px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .7px;
+  color: var(--muted);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* ─── Mini IDE ───────────────────────────────────────────────────── */
+.mini-ide {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.mini-ide-inner {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* sidebar */
+.p-sidebar {
+  width: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  gap: 5px;
+}
+.p-sb-icon {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: default;
+}
+
+/* tree */
+.p-tree {
+  width: 110px;
+  border-right: 1px solid rgba(255,255,255,.06);
+  overflow: hidden;
+  padding: 4px;
+  flex-shrink: 0;
+}
+.p-tree-header {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 4px 6px;
+  margin-bottom: 2px;
+}
+.p-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: default;
+}
+
+/* editor area */
+.p-editor-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* tabs */
+.p-tabs {
+  display: flex;
+  flex-shrink: 0;
+}
+.p-tab {
+  padding: 4px 12px;
+  font-size: 10px;
+  border-bottom: 2px solid transparent;
+}
+
+/* code */
+.p-code {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+.p-gutter {
+  width: 28px;
+  text-align: right;
+  padding: 5px 4px;
+  font-size: 9px;
+  line-height: 1.7;
+  flex-shrink: 0;
+}
+.p-lines {
+  flex: 1;
+  padding: 5px 8px;
+  line-height: 1.7;
+  font-size: 10px;
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* terminal strip */
+.p-terminal {
+  height: 52px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding: 4px 6px;
+  font-size: 9px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* ─── Toast ─────────────────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+  z-index: 999;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.ok  { border-color: var(--accent); color: #3fb950; }
+#toast.err { border-color: #da3633;       color: #f85149; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div>
+  	<div class="btn" onclick="BackToSettings()"> ⬅️ Back </div>
+    <div class="h1" style="font-size:15px;font-weight:700;color:#fff">🎨 Theme Studio</div>
+    <div class="sub">Customise every pixel of your IDE</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" onclick="resetToActive()">↩ Reset</button>
+  <button class="btn blue" onclick="applyLive()">▶ Preview</button>
+  <button class="btn primary" onclick="saveTheme()">💾 Save Theme</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- LEFT: Theme gallery -->
+  <div class="left">
+    <div class="left-tabs">
+      <div class="ltab active" id="ltab-builtin"  onclick="switchLTab('builtin')">Built-in</div>
+      <div class="ltab"        id="ltab-custom"   onclick="switchLTab('custom')">My Themes</div>
+    </div>
+    <div class="theme-list" id="themeList"></div>
+  </div>
+
+  <!-- MIDDLE: Editor -->
+  <div class="editor-panel">
+    <div class="editor-scroll" id="editorScroll">
+
+      <div class="name-row">
+        <label>Theme Name</label>
+        <input type="text" id="themeName" placeholder="My Custom Theme" />
+      </div>
+
+      <!-- UI Structure colours -->
+      <div class="section-title">Sidebar</div>
+      <div class="color-grid" id="cg-sidebar"></div>
+
+      <div class="section-title">File Tree</div>
+      <div class="color-grid" id="cg-tree"></div>
+
+      <div class="section-title">Editor</div>
+      <div class="color-grid" id="cg-editor"></div>
+
+      <div class="section-title">Tabs</div>
+      <div class="color-grid" id="cg-tabs"></div>
+
+      <div class="section-title">Syntax Highlighting</div>
+      <div class="color-grid" id="cg-syntax"></div>
+
+      <div class="section-title">Terminal</div>
+      <div class="color-grid" id="cg-terminal"></div>
+
+      <div class="section-title">Typography</div>
+      <div id="cg-typography"></div>
+
+    </div>
+
+    <div class="action-bar">
+      <button class="btn" onclick="duplicateTheme()">⧉ Duplicate current</button>
+      <div class="spacer"></div>
+      <button class="btn" onclick="resetToActive()">↩ Reset</button>
+      <button class="btn blue" onclick="applyLive()">▶ Preview in IDE</button>
+      <button class="btn primary" onclick="saveTheme()">💾 Save Theme</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Mini IDE preview -->
+  <div class="preview-panel">
+    <div class="preview-header">Live Preview</div>
+    <div class="mini-ide" id="miniIde">
+      <div class="mini-ide-inner">
+
+        <!-- sidebar -->
+        <div class="p-sidebar" id="pSidebar">
+          <div class="p-sb-icon" id="pSbIcon1">🗂</div>
+          <div class="p-sb-icon" id="pSbIcon2">▶</div>
+          <div class="p-sb-icon" id="pSbIcon3">⎇</div>
+          <div class="p-sb-icon" id="pSbIcon4">⚙</div>
+        </div>
+
+        <!-- tree -->
+        <div class="p-tree" id="pTree">
+          <div class="p-tree-header" id="pTreeHeader">MY PROJECT</div>
+          <div class="p-tree-item" id="pTreeItem1">📁 components</div>
+          <div class="p-tree-item" id="pTreeItemSel" style="border-radius:4px">🐍 main.py</div>
+          <div class="p-tree-item" id="pTreeItem2">📄 README.md</div>
+          <div class="p-tree-item" id="pTreeItem3">📦 package.json</div>
+        </div>
+
+        <!-- editor -->
+        <div class="p-editor-wrap" id="pEditorWrap">
+          <!-- tabs -->
+          <div class="p-tabs" id="pTabBar">
+            <div class="p-tab" id="pTab1">README.md</div>
+            <div class="p-tab" id="pTab2" style="font-style:normal;font-weight:600">main.py ●</div>
+          </div>
+
+          <div class="p-code" id="pCode">
+            <div class="p-gutter" id="pGutter">
+              1<br>2<br>3<br>4<br>5<br>6<br>7<br>8
+            </div>
+            <div class="p-lines" id="pLines">
+<!-- content set by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- terminal -->
+      <div class="p-terminal" id="pTerminal">
+        <span id="ptGreen">$</span> python main.py<br>
+        Hello Ikaris 🚀<br>
+        <span id="ptGreen2">$</span> _
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+
+<script>
+// ─────────────────────────────────────────────────────────────────
+// Bridge
+// ─────────────────────────────────────────────────────────────────
+let bridge = null;
+if (typeof qt !== "undefined") {
+  new QWebChannel(qt.webChannelTransport, ch => {
+    bridge = ch.objects.ThemeEngine;
+    init();
+  });
+} else {
+  // Dev mode — no PyQt
+  setTimeout(init, 100);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────
+let allThemes    = {};
+let currentTheme = {};    // the theme currently loaded in the editor
+let ltab = 'builtin';
+
+// ─────────────────────────────────────────────────────────────────
+// Field definitions
+// ─────────────────────────────────────────────────────────────────
+const FIELDS = {
+  sidebar: [
+    { key: 'sidebar_bg',    label: 'Background' },
+    { key: 'sidebar_btn',   label: 'Button' },
+    { key: 'sidebar_hover', label: 'Hover' },
+    { key: 'sidebar_icon',  label: 'Icon colour' },
+  ],
+  tree: [
+    { key: 'tree_bg',        label: 'Background' },
+    { key: 'tree_text',      label: 'Text' },
+    { key: 'tree_hover',     label: 'Hover' },
+    { key: 'tree_selected',  label: 'Selected' },
+    { key: 'tree_header_bg', label: 'Header bg' },
+  ],
+  editor: [
+    { key: 'editor_bg',        label: 'Background' },
+    { key: 'editor_text',      label: 'Text' },
+    { key: 'editor_line_hl',   label: 'Current line' },
+    { key: 'editor_gutter_bg', label: 'Gutter bg' },
+    { key: 'editor_gutter_fg', label: 'Line numbers' },
+    { key: 'scrollbar',        label: 'Scrollbar' },
+  ],
+  tabs: [
+    { key: 'tab_bar_bg',     label: 'Bar background' },
+    { key: 'tab_bg',         label: 'Tab background' },
+    { key: 'tab_active_bg',  label: 'Active bg' },
+    { key: 'tab_text',       label: 'Tab text' },
+    { key: 'tab_active_text',label: 'Active text' },
+    { key: 'tab_border',     label: 'Active underline' },
+  ],
+  syntax: [
+    { key: 'syn_keyword',  label: 'Keywords' },
+    { key: 'syn_builtin',  label: 'Builtins' },
+    { key: 'syn_string',   label: 'Strings' },
+    { key: 'syn_number',   label: 'Numbers' },
+    { key: 'syn_comment',  label: 'Comments' },
+    { key: 'syn_function', label: 'Functions' },
+    { key: 'syn_class',    label: 'Classes / Types' },
+    { key: 'syn_operator', label: 'Operators' },
+  ],
+  terminal: [
+    { key: 'term_bg',    label: 'Background' },
+    { key: 'term_text',  label: 'Text' },
+    { key: 'term_green', label: 'Prompt colour' },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────
+function init() {
+  buildColorGrids();
+  buildTypographySection();
+
+  if (bridge) {
+    bridge.get_all_themes(raw => {
+      const list = JSON.parse(raw);
+      list.forEach(t => { allThemes[t.name] = t; });
+      renderGallery();
+    });
+    bridge.get_current_theme(raw => {
+      loadThemeIntoEditor(JSON.parse(raw));
+    });
+  } else {
+    // Fallback demo theme
+    loadThemeIntoEditor(DEMO_THEME);
+    allThemes = { "Ikaris Dark": DEMO_THEME };
+    renderGallery();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Build colour picker grids
+// ─────────────────────────────────────────────────────────────────
+function buildColorGrids() {
+  for (const [group, fields] of Object.entries(FIELDS)) {
+    const grid = document.getElementById(`cg-${group}`);
+    if (!grid) continue;
+    grid.innerHTML = fields.map(f => colorRow(f.key, f.label)).join('');
+  }
+}
+
+function colorRow(key, label) {
+  return `
+  <label class="color-row" for="cp_${key}">
+    <div style="position:relative;flex-shrink:0">
+      <div class="color-swatch" id="sw_${key}"></div>
+      <input type="color" id="cp_${key}" oninput="onColorChange('${key}', this.value)">
+    </div>
+    <div class="color-info">
+      <div class="color-label">${label}</div>
+      <div class="color-hex" id="hex_${key}">#000000</div>
+    </div>
+  </label>`;
+}
+
+function buildTypographySection() {
+  document.getElementById('cg-typography').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div class="font-row">
+        <label>Editor Font</label>
+        <input type="text" id="f_editor_font" placeholder="Courier New"
+               oninput="onFontChange('editor_font', this.value)" />
+      </div>
+      <div class="font-row">
+        <label>Editor Size (pt)</label>
+        <input type="number" id="f_editor_font_size" min="8" max="32" value="12"
+               oninput="onFontChange('editor_font_size', +this.value)" />
+      </div>
+      <div class="font-row">
+        <label>UI Font</label>
+        <input type="text" id="f_ui_font" placeholder="Segoe UI"
+               oninput="onFontChange('ui_font', this.value)" />
+      </div>
+      <div class="font-row">
+        <label>UI Size (pt)</label>
+        <input type="number" id="f_ui_font_size" min="8" max="20" value="12"
+               oninput="onFontChange('ui_font_size', +this.value)" />
+      </div>
+    </div>`;
+}
+
+//----------------------------------
+// Back to main settings page
+//----------------------------------
+function BackToSettings() {
+  window.location.href = 'settings.html';
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────
+// Load theme into editor
+// ─────────────────────────────────────────────────────────────────
+function loadThemeIntoEditor(theme) {
+  currentTheme = { ...theme };
+  document.getElementById('themeName').value = theme.name || '';
+
+  // Colour pickers
+  for (const fields of Object.values(FIELDS)) {
+    for (const { key } of fields) {
+      const val = theme[key] || '#000000';
+      const sw  = document.getElementById(`sw_${key}`);
+      const cp  = document.getElementById(`cp_${key}`);
+      const hx  = document.getElementById(`hex_${key}`);
+      if (sw)  sw.style.background = val;
+      if (cp)  cp.value = toHex6(val);
+      if (hx)  hx.textContent = val;
+    }
+  }
+
+  // Fonts
+  setVal('f_editor_font',      theme.editor_font      || 'Courier New');
+  setVal('f_editor_font_size', theme.editor_font_size || 12);
+  setVal('f_ui_font',          theme.ui_font           || 'Segoe UI');
+  setVal('f_ui_font_size',     theme.ui_font_size      || 12);
+
+  updatePreview();
+}
+
+function setVal(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.value = v;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Colour / font change handlers
+// ─────────────────────────────────────────────────────────────────
+function onColorChange(key, value) {
+  currentTheme[key] = value;
+  const sw = document.getElementById(`sw_${key}`);
+  const hx = document.getElementById(`hex_${key}`);
+  if (sw) sw.style.background = value;
+  if (hx) hx.textContent = value;
+  updatePreview();
+  // Debounced live apply to IDE
+  scheduleLiveApply();
+}
+
+function onFontChange(key, value) {
+  currentTheme[key] = value;
+  updatePreview();
+  scheduleLiveApply();
+}
+
+let _liveTimer = null;
+function scheduleLiveApply() {
+  clearTimeout(_liveTimer);
+  _liveTimer = setTimeout(applyLive, 600);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Mini IDE preview
+// ─────────────────────────────────────────────────────────────────
+function updatePreview() {
+  const t = currentTheme;
+
+  // Sidebar
+  document.getElementById('pSidebar').style.background = t.sidebar_bg || '#1a1a1a';
+  ['pSbIcon1','pSbIcon2','pSbIcon3','pSbIcon4'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.background = t.sidebar_btn || '#2a2a2a';
+      el.style.color       = t.sidebar_icon || '#aaa';
+    }
+  });
+
+  // Tree
+  document.getElementById('pTree').style.background = t.tree_bg || '#1e1e1e';
+  document.getElementById('pTree').style.color       = t.tree_text || '#ccc';
+  document.getElementById('pTreeHeader').style.color = t.muted || t.tree_text || '#888';
+  document.getElementById('pTreeItemSel').style.background = t.tree_selected || '#094771';
+  document.getElementById('pTreeItemSel').style.color      = t.editor_text   || '#fff';
+
+  // Editor
+  const ew = document.getElementById('pEditorWrap');
+  ew.style.background = t.editor_bg || '#1e1e1e';
+
+  // Tabs
+  const tabBar = document.getElementById('pTabBar');
+  tabBar.style.background = t.tab_bar_bg || '#252526';
+
+  const tab1 = document.getElementById('pTab1');
+  tab1.style.background    = t.tab_bg    || '#2d2d2d';
+  tab1.style.color          = t.tab_text || '#888';
+  tab1.style.borderBottom   = `2px solid transparent`;
+
+  const tab2 = document.getElementById('pTab2');
+  tab2.style.background   = t.tab_active_bg   || '#1e1e1e';
+  tab2.style.color         = t.tab_active_text || '#fff';
+  tab2.style.borderBottom  = `2px solid ${t.tab_border || '#007acc'}`;
+
+  // Gutter
+  const gutter = document.getElementById('pGutter');
+  gutter.style.background = t.editor_gutter_bg || '#1a1a1a';
+  gutter.style.color       = t.editor_gutter_fg || '#0091E7';
+
+  // Code
+  const mono = `"${t.editor_font || 'Courier New'}", monospace`;
+  const sz   = `${t.editor_font_size || 12}px`;
+  document.getElementById('pLines').style.fontFamily  = mono;
+  document.getElementById('pLines').style.fontSize    = sz;
+  document.getElementById('pLines').style.color       = t.editor_text || '#d4d4d4';
+  document.getElementById('pCode').style.background   = t.editor_bg   || '#1e1e1e';
+
+  // Syntax-coloured code sample
+  document.getElementById('pLines').innerHTML = syntaxSample(t);
+
+  // Terminal
+  const term = document.getElementById('pTerminal');
+  term.style.background = t.term_bg   || '#1a1a1a';
+  term.style.color       = t.term_text || '#e0e0e0';
+  ['ptGreen','ptGreen2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.color = t.term_green || '#55FF55';
+  });
+}
+
+function syntaxSample(t) {
+  const kw  = c => `<span style="color:${t.syn_keyword  ||'#C792EA'}">${c}</span>`;
+  const bi  = c => `<span style="color:${t.syn_builtin  ||'#FFCB6B'}">${c}</span>`;
+  const st  = c => `<span style="color:${t.syn_string   ||'#C3E88D'}">${c}</span>`;
+  const nm  = c => `<span style="color:${t.syn_number   ||'#F78C6C'}">${c}</span>`;
+  const cm  = c => `<span style="color:${t.syn_comment  ||'#546E7A'}">${c}</span>`;
+  const fn  = c => `<span style="color:${t.syn_function ||'#82AAFF'}">${c}</span>`;
+  const cl  = c => `<span style="color:${t.syn_class    ||'#FFCB6B'}">${c}</span>`;
+  const op  = c => `<span style="color:${t.syn_operator ||'#89DDFF'}">${c}</span>`;
+  const df  = c => `<span style="color:${t.editor_text  ||'#d4d4d4'}">${c}</span>`;
+
+  return [
+    `${kw('import')} ${df('sys')}`,
+    `${cm('# Ikaris Dev Studio')}`,
+    ``,
+    `${kw('class')} ${cl('Editor')}${op('(')}${cl('QMainWindow')}${op(')')}${df(':')}`,
+    `  ${kw('def')} ${fn('__init__')}${df('(self)')}${df(':')}`,
+    `    ${bi('super')}${df('()')}${op('.')}${fn('__init__')}${df('()')}`,
+    `    ${df('self.version')} ${op('=')} ${nm('"4.0"')}`,
+    `    ${bi('print')}${df('(')}${st('"Hello Ikaris 🚀"')}${df(')')}`,
+  ].join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Gallery
+// ─────────────────────────────────────────────────────────────────
+function switchLTab(tab) {
+  ltab = tab;
+  document.querySelectorAll('.ltab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`ltab-${tab}`).classList.add('active');
+  renderGallery();
+}
+
+function renderGallery() {
+  const list = document.getElementById('themeList');
+  const themes = Object.values(allThemes).filter(t =>
+    ltab === 'builtin' ? t.builtin : !t.builtin
+  );
+
+  if (!themes.length) {
+    list.innerHTML = `<div style="color:var(--muted);padding:20px;text-align:center;font-size:12px">
+      ${ltab === 'custom' ? 'No custom themes yet.<br>Create one and save it!' : ''}
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = themes.map(t => themeCard(t)).join('');
+}
+
+function themeCard(t) {
+  const isActive = t.name === currentTheme.name;
+  return `
+  <div class="theme-card ${isActive ? 'active' : ''}" id="tc_${esc(t.name)}">
+    <div class="theme-swatch">
+      <div class="swatch-bar" style="background:${t.sidebar_bg}"></div>
+      <div class="swatch-bar" style="background:${t.tree_bg}"></div>
+      <div class="swatch-bar" style="background:${t.editor_bg}"></div>
+      <div class="swatch-bar" style="background:${t.syn_keyword}"></div>
+      <div class="swatch-bar" style="background:${t.syn_string}"></div>
+      <div class="swatch-bar" style="background:${t.syn_function}"></div>
+    </div>
+    <div class="theme-label">
+      <span class="name">${esc(t.name)}</span>
+      <span class="tag ${t.builtin ? '' : 'custom'}">${t.builtin ? 'built-in' : 'custom'}</span>
+    </div>
+    <div class="theme-actions">
+      <button class="ta-btn" onclick="selectTheme('${esc(t.name)}')">Edit</button>
+      <button class="ta-btn" onclick="applyTheme('${esc(t.name)}')">Apply</button>
+      ${!t.builtin ? `<button class="ta-btn danger" onclick="deleteTheme('${esc(t.name)}')">✕</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function selectTheme(name) {
+  if (allThemes[name]) loadThemeIntoEditor(allThemes[name]);
+}
+
+function applyTheme(name) {
+  selectTheme(name);
+  applyLive();
+  if (bridge) bridge.apply_theme_by_name(name);
+  toast(`Applied: ${name}`, 'ok');
+}
+
+function deleteTheme(name) {
+  if (!confirm(`Delete theme "${name}"?`)) return;
+  if (bridge) bridge.delete_theme(name);
+  delete allThemes[name];
+  renderGallery();
+  toast(`Deleted: ${name}`, 'ok');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Actions
+// ─────────────────────────────────────────────────────────────────
+function applyLive() {
+  currentTheme.name = document.getElementById('themeName').value.trim() || currentTheme.name || 'Custom';
+  if (bridge) bridge.apply_theme_json(JSON.stringify(currentTheme));
+  toast('Preview applied to IDE ▶', 'ok');
+}
+
+function saveTheme() {
+  const name = document.getElementById('themeName').value.trim();
+  if (!name) { toast('Enter a theme name first', 'err'); return; }
+  currentTheme.name    = name;
+  currentTheme.builtin = false;
+  allThemes[name]      = { ...currentTheme };
+  if (bridge) bridge.save_theme(JSON.stringify(currentTheme));
+  renderGallery();
+  toast(`Saved: ${name}`, 'ok');
+}
+
+function duplicateTheme() {
+  const baseName = currentTheme.name || 'Custom';
+  const newName  = `${baseName} Copy`;
+  document.getElementById('themeName').value = newName;
+  currentTheme = { ...currentTheme, name: newName, builtin: false };
+}
+
+function resetToActive() {
+  if (bridge) {
+    bridge.get_current_theme(raw => {
+      loadThemeIntoEditor(JSON.parse(raw));
+      toast('Reset to active theme', 'ok');
+    });
+  } else {
+    loadThemeIntoEditor(DEMO_THEME);
+  }
+}
+
+// Called from ThemeEngine.save_theme() response
+function onThemeSaved(name) {
+  toast(`Saved: ${name}`, 'ok');
+}
+function onThemeDeleted(name) {
+  toast(`Deleted: ${name}`, 'ok');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────
+function toHex6(color) {
+  if (!color || color === 'transparent') return '#000000';
+  if (color.startsWith('#') && color.length === 7) return color;
+  if (color.startsWith('#') && color.length === 4) {
+    return '#' + color.slice(1).split('').map(c => c+c).join('');
+  }
+  return color;
+}
+
+function esc(s) {
+  return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+let _toastTimer2 = null;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(_toastTimer2);
+  _toastTimer2 = setTimeout(() => { el.className = ''; }, 2800);
+}
+
+// Demo theme for dev mode (no PyQt)
+const DEMO_THEME = {
+  name: "Ikaris Dark", builtin: true,
+  sidebar_bg: "#1a1a1a", sidebar_btn: "#2a2a2a", sidebar_hover: "#3a3a3a", sidebar_icon: "#aaaaaa",
+  tree_bg: "#1e1e1e", tree_text: "#cccccc", tree_hover: "#2a2a2a",
+  tree_selected: "#094771", tree_header_bg: "#1a1a1a",
+  editor_bg: "#1e1e1e", editor_text: "#d4d4d4", editor_line_hl: "#2a2a2a",
+  editor_gutter_bg: "#1a1a1a", editor_gutter_fg: "#0091E7", scrollbar: "#424242",
+  tab_bar_bg: "#252526", tab_bg: "#2d2d2d", tab_active_bg: "#1e1e1e",
+  tab_text: "#888888", tab_active_text: "#ffffff", tab_border: "#007acc",
+  syn_keyword: "#C792EA", syn_builtin: "#FFCB6B", syn_string: "#C3E88D",
+  syn_number: "#F78C6C", syn_comment: "#546E7A", syn_function: "#82AAFF",
+  syn_class: "#FFCB6B", syn_operator: "#89DDFF",
+  term_bg: "#1a1a1a", term_text: "#e0e0e0", term_green: "#55FF55",
+  editor_font: "Courier New", editor_font_size: 12,
+  ui_font: "Segoe UI", ui_font_size: 12,
+};
+</script>
+</body>
+</html>
