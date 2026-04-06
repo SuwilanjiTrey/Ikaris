@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <title>Ikaris — Settings</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -617,18 +618,20 @@ input[type=number] { min-width: 80px; }
 // ─────────────────────────────────────────────────────────────────
 // Bridge
 // ─────────────────────────────────────────────────────────────────
-let bridge = null;
-let themeBridge = null;
+var bridge = null;
+var themeBridge = null;
 
-if (typeof qt !== "undefined") {
-  new QWebChannel(qt.webChannelTransport, ch => {
-    bridge      = ch.objects.WebBridge;
-    themeBridge = ch.objects.ThemeEngine;
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof qt !== "undefined") {
+    new QWebChannel(qt.webChannelTransport, function(ch) {
+      bridge      = ch.objects.WebBridge;
+      themeBridge = ch.objects.ThemeEngine;
+      init();
+    });
+  } else {
     init();
-  });
-} else {
-  setTimeout(init, 100);
-}
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────
 // Nav

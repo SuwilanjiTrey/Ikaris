@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 <title>Ikaris — Theme Studio</title>
 <style>
 /* ─── Reset & base ─────────────────────────────────────────────── */
@@ -583,25 +584,29 @@ body {
 
 <script>
 // ─────────────────────────────────────────────────────────────────
-// Bridge
+// State  (declared first — must be before any function that refs them)
 // ─────────────────────────────────────────────────────────────────
-let bridge = null;
-if (typeof qt !== "undefined") {
-  new QWebChannel(qt.webChannelTransport, ch => {
-    bridge = ch.objects.ThemeEngine;
-    init();
-  });
-} else {
-  // Dev mode — no PyQt
-  setTimeout(init, 100);
-}
+var bridge       = null;
+var allThemes    = {};
+var currentTheme = {};
+var ltab         = 'builtin';
+var _liveTimer   = null;
+var _toastTimer2 = null;
 
 // ─────────────────────────────────────────────────────────────────
-// State
+// Bridge  (runs after DOM + state are ready)
 // ─────────────────────────────────────────────────────────────────
-let allThemes    = {};
-let currentTheme = {};    // the theme currently loaded in the editor
-let ltab = 'builtin';
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof qt !== "undefined") {
+    new QWebChannel(qt.webChannelTransport, function(ch) {
+      bridge = ch.objects.ThemeEngine;
+      init();
+    });
+  } else {
+    // Dev mode — no PyQt, load demo theme immediately
+    init();
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────
 // Field definitions
@@ -689,17 +694,21 @@ function buildColorGrids() {
 }
 
 function colorRow(key, label) {
+  // Swatch div acts as a visible button; hidden input is triggered via JS click
   return `
-  <label class="color-row" for="cp_${key}">
-    <div style="position:relative;flex-shrink:0">
-      <div class="color-swatch" id="sw_${key}"></div>
-      <input type="color" id="cp_${key}" oninput="onColorChange('${key}', this.value)">
+  <div class="color-row" onclick="document.getElementById('cp_${key}').click()">
+    <div style="position:relative;flex-shrink:0;width:28px;height:28px;">
+      <div class="color-swatch" id="sw_${key}"
+           style="position:absolute;inset:0;border-radius:5px;border:2px solid rgba(255,255,255,.15);cursor:pointer;"></div>
+      <input type="color" id="cp_${key}"
+             style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:none;padding:0;"
+             oninput="onColorChange('${key}', this.value)" />
     </div>
     <div class="color-info">
       <div class="color-label">${label}</div>
       <div class="color-hex" id="hex_${key}">#000000</div>
     </div>
-  </label>`;
+  </div>`;
 }
 
 function buildTypographySection() {
@@ -791,7 +800,6 @@ function onFontChange(key, value) {
   scheduleLiveApply();
 }
 
-let _liveTimer = null;
 function scheduleLiveApply() {
   clearTimeout(_liveTimer);
   _liveTimer = setTimeout(applyLive, 600);
@@ -1018,7 +1026,6 @@ function esc(s) {
   return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-let _toastTimer2 = null;
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
   el.textContent = msg;

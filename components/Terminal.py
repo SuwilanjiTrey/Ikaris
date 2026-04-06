@@ -257,7 +257,7 @@ class TerminalDisplay(QTextEdit):
 
     # signals to the owning TerminalPane
     char_written  = pyqtSignal(bytes)   # user typed something → write to pty
-    sigint_req    = pyqtSignal()        # Ctrl+C with no selection
+    # sigint_req removed: Ctrl+C now writes \x03 directly via char_written
 
     def __init__(self):
         super().__init__()
@@ -313,16 +313,19 @@ class TerminalDisplay(QTextEdit):
         ctrl = bool(mods & Qt.ControlModifier)
         shift= bool(mods & Qt.ShiftModifier)
 
-        # ── Copy: Ctrl+C with selection, or Ctrl+Shift+C ─────────────
-        if ctrl and key == Qt.Key_C:
-            if self.textCursor().hasSelection() and not shift:
-                # Ctrl+C + selection → copy to clipboard
+        # ── Ctrl+Shift+C → copy selected text ────────────────────────
+        if ctrl and shift and key == Qt.Key_C:
+            if self.textCursor().hasSelection():
                 self.copy()
-                return
-            else:
-                # Ctrl+C without selection → SIGINT
-                self.sigint_req.emit()
-                return
+            return
+
+        # ── Ctrl+C → always send raw \x03 to PTY (kills foreground process)
+        # Writing the ETX byte to the PTY master is how real terminals send
+        # SIGINT. The kernel line discipline delivers it to the foreground
+        # process group — works for any subprocess, not just the shell.
+        if ctrl and key == Qt.Key_C:
+            self.char_written.emit(b"\x03")
+            return
 
         # ── Paste: Ctrl+V or Ctrl+Shift+V ────────────────────────────
         if ctrl and key == Qt.Key_V:
@@ -447,24 +450,57 @@ class TerminalDisplay(QTextEdit):
             self.setTextCursor(c)
 
     def contextMenuEvent(self, event):
-        from PyQt5.QtWidgets import QMenu, QAction
+        from PyQt5.QtWidgets import QMenu
+        has_sel = self.textCursor().hasSelection()
+
         menu = QMenu(self)
         menu.setStyleSheet("""
-            QMenu { background:#2a2a2a; color:#e0e0e0; border:1px solid #444; }
-            QMenu::item:selected { background:#3a5a8a; }
+            QMenu {
+                background: #1e1e1e;
+                color: #e0e0e0;
+                border: 1px solid #3a3a3a;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 5px 22px 5px 12px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected { background: #094771; }
+            QMenu::item:disabled { color: #555; }
+            QMenu::separator { height:1px; background:#333; margin:3px 8px; }
         """)
-        copy_act  = menu.addAction("Copy")
-        paste_act = menu.addAction("Paste")
+
+        copy_act   = menu.addAction("📋  Copy")
+        paste_act  = menu.addAction("📌  Paste")
         menu.addSeparator()
-        clear_act = menu.addAction("Clear")
-        copy_act.setEnabled(self.textCursor().hasSelection())
+
+        kill_act   = menu.addAction("⛔  Force Kill (Ctrl+C)")
+        kill_act.setToolTip("Sends raw interrupt byte to foreground process")
+        menu.addSeparator()
+
+        clear_act  = menu.addAction("🧹  Clear terminal")
+
+        copy_act.setEnabled(has_sel)
+
         act = menu.exec_(event.globalPos())
+
         if act == copy_act:
             self.copy()
+
         elif act == paste_act:
             clipboard = QApplication.clipboard().text()
             if clipboard:
                 self.char_written.emit(clipboard.encode("utf-8"))
+
+        elif act == kill_act:
+            # Write \x03 (ETX / Ctrl+C) directly to PTY — kills foreground
+            # process group via kernel line discipline. Safe: only the
+            # subprocess is killed, not the shell or the Qt application.
+            self.char_written.emit(b"\x03")
+            # Also send \x15 (Ctrl+U) to clear any partial line afterwards
+            self.char_written.emit(b"\x15")
+
         elif act == clear_act:
             self.clear()
             self._input_anchor = 0
@@ -484,10 +520,11 @@ class TerminalPane(QWidget):
         self._master = None
         self._pid    = None
         self._reader = None
-        self._parser     = AnsiParser()
-        self._last_cols  = 80
-        self._last_rows  = 24
+        self._parser      = AnsiParser()
+        self._last_cols   = 80
+        self._last_rows   = 24
         self._is_resizing = False
+        self._echo_suppress = ""   # text we just sent; strip its echo
 
         # Debounce resize: only send TIOCSWINSZ 300ms after the last resize event
         self._resize_timer = QTimer()
@@ -506,7 +543,7 @@ class TerminalPane(QWidget):
 
         self._display = TerminalDisplay()
         self._display.char_written.connect(self._write_to_pty)
-        self._display.sigint_req.connect(lambda: self._send_signal(signal.SIGINT))
+        # Ctrl+C is now sent as \x03 via char_written; no separate sigint_req needed
         layout.addWidget(self._display)
         self._display.setFocus()
 
@@ -592,6 +629,20 @@ class TerminalPane(QWidget):
             return
 
         filtered = self._strip_cursor_sequences(raw)
+
+        # ── Echo suppression ──────────────────────────────────────────
+        # The PTY echoes back exactly what we typed. Strip it so the
+        # command doesn't appear twice. We match against the start of the
+        # decoded chunk (after cursor-sequence stripping).
+        if self._echo_suppress:
+            decoded = filtered.decode("utf-8", errors="replace")
+            # The echo arrives as the typed text followed by \r\n
+            echo_candidate = self._echo_suppress
+            if echo_candidate in decoded:
+                decoded = decoded.replace(echo_candidate, "", 1)
+                filtered = decoded.encode("utf-8")
+            self._echo_suppress = ""
+
         spans    = self._parser.feed(filtered)
 
         cursor = self._display.textCursor()
@@ -631,6 +682,13 @@ class TerminalPane(QWidget):
         if self._master is not None:
             try:
                 os.write(self._master, data)
+                # Track printable text for echo suppression.
+                # The PTY will echo back exactly what we sent (minus the \n
+                # which becomes \r\n in the output stream).
+                text = data.decode("utf-8", errors="replace")
+                printable = text.rstrip("\n\r")
+                if printable:
+                    self._echo_suppress = printable
             except OSError:
                 pass
 

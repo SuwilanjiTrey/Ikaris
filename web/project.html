@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>New Project</title>
+<style>
+  :root {
+    --bg:        #0f0f13;
+    --surface:   #1a1a22;
+    --surface2:  #22222e;
+    --border:    #2e2e3e;
+    --accent:    #6c63ff;
+    --accent2:   #a78bfa;
+    --text:      #e2e2f0;
+    --muted:     #6b6b80;
+    --success:   #4ade80;
+    --error:     #f87171;
+    --warn:      #facc15;
+    --radius:    12px;
+    --card-r:    16px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 18px 24px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .03em; }
+  header .sub { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Body layout ── */
+  .body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left panel – type picker ── */
+  .sidebar {
+    width: 230px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .sidebar-label {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    padding: 4px 6px 8px;
+  }
+  .type-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: .88rem;
+    transition: background .15s, border-color .15s;
+    text-align: left;
+  }
+  .type-btn:hover { background: var(--surface2); }
+  .type-btn.active {
+    background: var(--surface2);
+    border-color: var(--accent);
+    color: var(--accent2);
+  }
+.type-btn .icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.type-btn .icon img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+  .type-btn .label { line-height: 1.2; }
+  .type-btn .sub   { font-size: .72rem; color: var(--muted); }
+
+  /* ── Right area ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Config form ── */
+  .config {
+    flex: 1;
+    padding: 22px 28px;
+    overflow-y: auto;
+  }
+  .config h2 { font-size: .95rem; font-weight: 600; margin-bottom: 18px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select {
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: .88rem;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field select option { background: var(--surface2); }
+
+  .dir-row { display: flex; gap: 8px; }
+  .dir-row input { flex: 1; }
+  .dir-btn {
+    padding: 9px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .82rem;
+    white-space: nowrap;
+    transition: border-color .15s, color .15s;
+  }
+  .dir-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  .sub-options {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sub-options h3 { font-size: .8rem; color: var(--muted); margin-bottom: 2px; }
+
+  /* toggle chips */
+  .chip-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    padding: 5px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: .8rem;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .chip.active { border-color: var(--accent); background: rgba(108,99,255,.15); color: var(--accent2); }
+
+  /* checkbox row */
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .84rem;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .check-row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  /* ── Log console ── */
+  .console-wrap {
+    border-top: 1px solid var(--border);
+    background: #0a0a0f;
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .console-header {
+    padding: 6px 14px;
+    font-size: .72rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  #console {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: .76rem;
+    line-height: 1.5;
+    color: #a0ffa0;
+  }
+  .log-err  { color: var(--error); }
+  .log-warn { color: var(--warn); }
+  .log-info { color: var(--muted); }
+
+  /* ── Footer action bar ── */
+  .footer {
+    padding: 14px 28px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .btn {
+    padding: 10px 22px;
+    border-radius: 9px;
+    border: none;
+    font-size: .88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { opacity: .88; }
+  .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    display: none;
+  }
+  .busy .spinner { display: inline-block; }
+  .busy .btn-label { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>New Project</h1>
+    <div class="sub">CLI-based scaffolding • no templates required</div>
+  </div>
+</header>
+
+<div class="body">
+
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar">
+    <div class="sidebar-label">Project Type</div>
+
+    <button class="type-btn active" data-type="python" onclick="selectType(this)">
+      <div class="icon">
+	<img 
+	src="../images/fileIcons/python.png"
+	alt="python icon"
+	>
+	</div>
+      <div>
+        <div class="label">Python</div>
+        <div class="sub">Django · Flask</div>
+      </div>
+    </button>
+
+    <button class="type-btn" data-type="java" onclick="selectType(this)">
+      <div class="icon">
+	<img 
+	src="../images/fileIcons/java.png"
+	alt="java icon"
+	>
+	</div>
+      <div>
+        <div class="label">Java</div>
+        <div class="sub">Spring Boot + Maven</div>
+      </div>
+    </button>
+
+    <button class="type-btn" data-type="android" onclick="selectType(this)">
+      <div class="icon">
+	<img 
+	src="../images/fileIcons/android.png"
+	alt="android icon"
+	>
+	</div>
+      <div>
+        <div class="label">Android</div>
+        <div class="sub">React Native + Expo</div>
+      </div>
+    </button>
+
+    <button class="type-btn" data-type="web" onclick="selectType(this)">
+      <div class="icon">
+	<img 
+	src="../images/fileIcons/react.png"
+	alt="react icon"
+	>
+	</div>
+      <div>
+        <div class="label">Web</div>
+        <div class="sub">React · Vite · Next.js</div>
+      </div>
+    </button>
+  </nav>
+
+  <!-- ── Main ── -->
+  <div class="main">
+
+    <div class="config">
+      <h2 id="cfg-title">Python Project</h2>
+
+      <!-- Common fields -->
+      <div class="field">
+        <label>Project Name</label>
+        <input id="proj-name" type="text" placeholder="my-awesome-project"/>
+      </div>
+      <div class="field">
+        <label>Target Directory</label>
+        <div class="dir-row">
+          <input id="proj-dir" type="text" placeholder="/home/user/projects"/>
+          <button class="dir-btn" onclick="browseDir()">Browse …</button>
+        </div>
+      </div>
+
+      <!-- Type-specific options rendered here -->
+      <div id="type-options"></div>
+    </div>
+
+    <!-- Console -->
+    <div class="console-wrap">
+      <div class="console-header">
+        <span>Output</span>
+        <button class="dir-btn" style="padding:3px 10px;font-size:.7rem;" onclick="clearConsole()">Clear</button>
+      </div>
+      <div id="console"></div>
+    </div>
+
+  </div><!-- /.main -->
+</div><!-- /.body -->
+
+<!-- Footer -->
+<div class="footer">
+  <button class="btn btn-secondary" onclick="window.close ? window.close() : log('Close not available in embedded mode','warn')">Cancel</button>
+  <button class="btn btn-primary" id="create-btn" onclick="createProject()">
+    <span class="spinner"></span>
+    <span class="btn-label">Create Project</span>
+  </button>
+</div>
+
+<!-- ────────── QWebChannel bootstrap ────────── -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let bridge = null;
+let currentType = 'python';
+const $ = id => document.getElementById(id);
+
+// ── WebChannel init ──────────────────────────────────────────────────────────
+new QWebChannel(qt.webChannelTransport, ch => {
+  bridge = ch.objects.projectBridge;
+
+  bridge.log_message.connect(line => log(line));
+  bridge.project_created.connect(path => {
+    log(`✅  Project ready at: ${path}`, 'success');
+    setBusy(false);
+    // Notify parent window (main editor) to update directory
+    if (typeof onProjectCreated === 'function') onProjectCreated(path);
+  });
+  bridge.creation_failed.connect(msg => {
+    log(`❌  ${msg}`, 'err');
+    setBusy(false);
+  });
+
+  log('Ready.', 'info');
+});
+
+// ── Type selector ────────────────────────────────────────────────────────────
+const TYPE_TITLES = {
+  python:  'Python Project',
+  java:    'Java / Spring Boot Project',
+  android: 'Android / Expo Project',
+  web:     'Web / React Project',
+};
+
+const TYPE_OPTIONS = {
+  python: `
+    <div class="sub-options">
+      <h3>Framework</h3>
+      <div class="chip-group">
+        <button class="chip active" data-key="python_framework" data-val="django" onclick="pickChip(this)">Django</button>
+        <button class="chip"       data-key="python_framework" data-val="flask"  onclick="pickChip(this)">Flask</button>
+      </div>
+    </div>`,
+
+  java: `
+    <div class="sub-options">
+      <h3>Spring Boot Options</h3>
+      <div class="field">
+        <label>Group ID</label>
+        <input id="java-group" type="text" value="com.example" placeholder="com.example"/>
+      </div>
+      <div class="field">
+        <label>Java Version</label>
+        <select id="java-version">
+          <option value="21">Java 21 (LTS)</option>
+          <option value="17" selected>Java 17 (LTS)</option>
+          <option value="11">Java 11 (LTS)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Dependencies (comma-separated Spring IDs)</label>
+        <input id="java-deps" type="text" value="web" placeholder="web,data-jpa,security"/>
+      </div>
+    </div>`,
+
+  android: `
+    <div class="sub-options">
+      <h3>Expo Options</h3>
+      <label class="check-row">
+        <input type="checkbox" id="android-bare"/>
+        Use bare workflow (runs <code>expo prebuild</code>)
+      </label>
+      <label class="check-row" id="ios-row" style="display:none">
+        <input type="checkbox" id="android-ios"/>
+        Include iOS platform
+      </label>
+    </div>
+    <script>
+      document.getElementById('android-bare').addEventListener('change', function() {
+        document.getElementById('ios-row').style.display = this.checked ? 'flex' : 'none';
+      });
+    <\/script>`,
+
+  web: `
+    <div class="sub-options">
+      <h3>React Variant</h3>
+      <div class="chip-group">
+        <button class="chip active" data-key="web_variant" data-val="react-bare" onclick="pickChip(this)">React (bare)</button>
+        <button class="chip"        data-key="web_variant" data-val="vite"        onclick="pickChip(this)">Vite</button>
+        <button class="chip"        data-key="web_variant" data-val="nextjs"      onclick="pickChip(this)">Next.js</button>
+      </div>
+      <h3 style="margin-top:10px">CSS</h3>
+      <div class="chip-group">
+        <button class="chip active" data-key="css_tool" data-val="css3"     onclick="pickChip(this)">CSS3</button>
+        <button class="chip"        data-key="css_tool" data-val="tailwind" onclick="pickChip(this)">Tailwind CSS</button>
+      </div>
+    </div>`,
+};
+
+function selectType(btn) {
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentType = btn.dataset.type;
+  $('cfg-title').textContent = TYPE_TITLES[currentType];
+  $('type-options').innerHTML = TYPE_OPTIONS[currentType] || '';
+}
+
+// ── Chip picker (single-select within a data-key group) ──────────────────────
+function pickChip(chip) {
+  const key = chip.dataset.key;
+  document.querySelectorAll(`.chip[data-key="${key}"]`).forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+}
+
+function getChipValue(key, fallback) {
+  const active = document.querySelector(`.chip.active[data-key="${key}"]`);
+  return active ? active.dataset.val : fallback;
+}
+
+// ── Browse directory ─────────────────────────────────────────────────────────
+async function browseDir() {
+  if (!bridge) return;
+  const path = await bridge.browse_directory();
+  if (path) $('proj-dir').value = path;
+}
+
+// ── Build config and fire ────────────────────────────────────────────────────
+function createProject() {
+  if (!bridge) { log('Bridge not ready yet.', 'err'); return; }
+
+  const name = $('proj-name').value.trim();
+  const dir  = $('proj-dir').value.trim();
+  if (!name) { log('Please enter a project name.', 'err'); return; }
+  if (!dir)  { log('Please choose a target directory.', 'err'); return; }
+
+  const cfg = { project_type: currentType, project_name: name, target_dir: dir };
+
+  if (currentType === 'python') {
+    cfg.python_framework = getChipValue('python_framework', 'django');
+
+  } else if (currentType === 'java') {
+    cfg.group_id    = ($('java-group')   || { value: 'com.example' }).value.trim();
+    cfg.java_version= ($('java-version') || { value: '17'          }).value;
+    cfg.dependencies= ($('java-deps')    || { value: 'web'         }).value.trim();
+
+  } else if (currentType === 'android') {
+    cfg.bare_workflow = ($('android-bare') || {}).checked || false;
+    cfg.include_ios   = ($('android-ios')  || {}).checked || false;
+
+  } else if (currentType === 'web') {
+    cfg.web_variant = getChipValue('web_variant', 'react-bare');
+    cfg.css_tool    = getChipValue('css_tool',    'css3');
+  }
+
+  setBusy(true);
+  log(`Creating ${currentType} project "${name}" …`, 'info');
+  bridge.create_project(JSON.stringify(cfg));
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function log(msg, type = '') {
+  const el = $('console');
+  const line = document.createElement('div');
+  line.className = type ? `log-${type}` : '';
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearConsole() { $('console').innerHTML = ''; }
+
+function setBusy(busy) {
+  const btn = $('create-btn');
+  if (busy) btn.classList.add('busy');
+  else      btn.classList.remove('busy');
+  btn.disabled = busy;
+}
+
+// Kick off with Python options visible
+selectType(document.querySelector('.type-btn.active'));
+</script>
+</body>
+</html>

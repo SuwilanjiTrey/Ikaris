@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Ikaris AI</title>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"/>
+<style>
+:root {
+  --bg-void:#080c14;--bg-panel:#0d1220;--bg-surface:#111827;
+  --bg-elevated:#162032;--bg-card:#1a2740;
+  --moon-200:#b8d8f8;--moon-300:#7fb8ef;
+  --cyan:#00d4c8;--teal:#0ea5a0;--ok:#4ade80;--danger:#e05252;
+  --text-1:#e2eaf8;--text-2:#8aa4c8;--text-3:#4a6080;--text-code:#a8d8f0;
+  --border-lo:#1e3050;--border-mid:#2a4060;--border-cyan:rgba(0,212,200,.35);
+  --glow:0 0 20px rgba(0,212,200,.15);--shadow:0 8px 32px rgba(0,0,0,.6);
+  --font-ui:'Syne',sans-serif;--font-mono:'JetBrains Mono',monospace;
+  --r:8px;--r-lg:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg-void);color:var(--text-1);font-family:var(--font-ui);overflow:hidden}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    radial-gradient(1px 1px at 15% 25%,rgba(255,255,255,.22) 0%,transparent 100%),
+    radial-gradient(1px 1px at 55% 65%,rgba(255,255,255,.16) 0%,transparent 100%),
+    radial-gradient(1.5px 1.5px at 80% 18%,rgba(200,220,255,.18) 0%,transparent 100%),
+    radial-gradient(1px 1px at 8% 78%,rgba(255,255,255,.13) 0%,transparent 100%),
+    radial-gradient(1px 1px at 88% 42%,rgba(200,220,255,.18) 0%,transparent 100%)}
+body::after{content:'';position:fixed;top:0;left:0;right:0;height:160px;
+  background:linear-gradient(180deg,rgba(0,212,200,.05) 0%,transparent 100%);pointer-events:none;z-index:0}
+
+#shell{position:relative;z-index:1;height:100vh;display:flex;flex-direction:column}
+
+/* TOPBAR */
+#topbar{flex-shrink:0;height:48px;display:flex;align-items:center;gap:8px;padding:0 12px;
+  background:rgba(13,18,32,.92);border-bottom:1px solid var(--border-lo);backdrop-filter:blur(12px)}
+.logo{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--cyan);text-shadow:0 0 12px rgba(0,212,200,.5);white-space:nowrap}
+.vdiv{width:1px;height:20px;background:var(--border-mid);flex-shrink:0}
+#modelSelector{flex:1;min-width:0;background:var(--bg-elevated);border:1px solid var(--border-mid);
+  border-radius:var(--r);color:var(--text-1);font-family:var(--font-mono);font-size:11px;
+  padding:4px 26px 4px 9px;outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238aa4c8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 7px center;transition:border-color .2s}
+#modelSelector:hover{border-color:var(--cyan)}
+#modelSelector option{background:var(--bg-panel)}
+#refreshBtn{flex-shrink:0;background:none;border:1px solid var(--border-mid);border-radius:var(--r);
+  color:var(--text-2);padding:5px 7px;cursor:pointer;display:flex;align-items:center;transition:all .2s}
+#refreshBtn:hover{border-color:var(--cyan);color:var(--cyan)}
+#refreshBtn svg{width:12px;height:12px;transition:transform .4s}
+#refreshBtn:hover svg{transform:rotate(180deg)}
+#statusPill{flex-shrink:0;display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;
+  font-size:10px;font-weight:600;letter-spacing:.05em;font-family:var(--font-mono);
+  border:1px solid transparent;transition:all .3s;white-space:nowrap}
+#statusPill.online{color:var(--ok);border-color:rgba(74,222,128,.25);background:rgba(74,222,128,.08)}
+#statusPill.offline{color:var(--danger);border-color:rgba(224,82,82,.25);background:rgba(224,82,82,.08)}
+#statusPill .dot{width:6px;height:6px;border-radius:50%}
+#statusPill.online .dot{background:var(--ok);box-shadow:0 0 5px var(--ok)}
+#statusPill.offline .dot{background:var(--danger);box-shadow:0 0 5px var(--danger)}
+
+/* SCAN ROW */
+#scanRow{flex-shrink:0;display:flex;justify-content:flex-end;padding:4px 12px;
+  background:rgba(13,18,32,.6);border-bottom:1px solid var(--border-lo)}
+.scan-btn{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:var(--r);
+  border:1px solid var(--border-mid);background:var(--bg-elevated);color:var(--text-2);
+  font-family:var(--font-ui);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s}
+.scan-btn svg{width:12px;height:12px}
+.scan-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,200,.06);box-shadow:var(--glow)}
+
+/* CONTEXT BAR */
+#ctxBar{flex-shrink:0;display:none;align-items:center;gap:6px;padding:5px 12px;
+  background:rgba(0,212,200,.04);border-bottom:1px solid rgba(0,212,200,.15);
+  font-size:11px;font-family:var(--font-mono);color:var(--cyan);flex-wrap:wrap}
+#ctxBar.active{display:flex}
+#ctxBar .label{font-family:var(--font-ui);font-size:10px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-3);flex-shrink:0}
+.chip{display:inline-flex;align-items:center;gap:4px;background:rgba(0,212,200,.1);
+  border:1px solid rgba(0,212,200,.25);border-radius:4px;padding:2px 7px;font-size:11px;
+  max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-x{color:var(--text-3);font-size:13px;cursor:pointer;flex-shrink:0}
+.chip-x:hover{color:var(--danger)}
+
+/* CHAT */
+#chat{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;
+  gap:14px;scroll-behavior:smooth}
+#chat::-webkit-scrollbar{width:4px}
+#chat::-webkit-scrollbar-thumb{background:var(--border-mid);border-radius:2px}
+
+#empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;text-align:center;color:var(--text-3);padding:20px}
+#empty .moon{font-size:32px;animation:pulse 3s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.06);opacity:1}}
+#empty h3{font-size:14px;font-weight:700;color:var(--text-2)}
+#empty p{font-size:11px;line-height:1.6;max-width:260px}
+
+/* MESSAGES */
+.msg{display:flex;flex-direction:column;gap:5px;animation:msgIn .22s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.msg-hdr{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase}
+.avatar{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;
+  justify-content:center;font-size:10px;flex-shrink:0}
+.msg.user .avatar{background:rgba(79,157,224,.2);border:1px solid rgba(79,157,224,.4)}
+.msg.ai .avatar{background:rgba(0,212,200,.15);border:1px solid rgba(0,212,200,.3)}
+.msg.user .msg-hdr{color:var(--moon-300)}
+.msg.ai .msg-hdr{color:var(--cyan)}
+.bubble{padding:10px 12px;font-size:13px;line-height:1.65;max-width:100%;word-break:break-word}
+.msg.user .bubble{background:var(--bg-elevated);border:1px solid var(--border-mid);
+  border-radius:var(--r-lg) var(--r-lg) var(--r) var(--r-lg)}
+.msg.ai .bubble{background:rgba(22,32,50,.85);border:1px solid var(--border-cyan);
+  border-radius:var(--r-lg) var(--r-lg) var(--r-lg) var(--r);box-shadow:var(--glow)}
+.bubble p{margin:0 0 7px}.bubble p:last-child{margin-bottom:0}
+.bubble strong{color:var(--moon-200)}
+.bubble em{color:var(--text-2);font-style:italic}
+.bubble ul,.bubble ol{padding-left:16px;margin:5px 0}
+.bubble li{margin:2px 0}
+.bubble h1,.bubble h2,.bubble h3{font-family:var(--font-ui);color:var(--moon-200);margin:9px 0 4px;font-weight:700}
+.bubble h1{font-size:15px}.bubble h2{font-size:13px}.bubble h3{font-size:12px}
+.bubble a{color:var(--cyan);text-decoration:none}
+.bubble a:hover{text-decoration:underline}
+.bubble code:not(pre code){font-family:var(--font-mono);font-size:11px;
+  background:rgba(0,212,200,.08);border:1px solid rgba(0,212,200,.18);
+  border-radius:3px;padding:1px 4px;color:var(--text-code)}
+
+/* CODE BLOCKS */
+.code-wrap{margin:7px 0;border-radius:var(--r);overflow:hidden;border:1px solid var(--border-mid)}
+.code-hdr{display:flex;align-items:center;justify-content:space-between;padding:4px 10px;
+  background:rgba(8,12,20,.95);font-family:var(--font-mono);font-size:10px;color:var(--text-3);
+  border-bottom:1px solid var(--border-lo)}
+.code-hdr .lang{color:var(--cyan);font-weight:600}
+.copy-btn{background:none;border:1px solid var(--border-mid);border-radius:3px;color:var(--text-3);
+  padding:2px 7px;font-size:10px;font-family:var(--font-mono);cursor:pointer;transition:all .15s}
+.copy-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.copy-btn.copied{color:var(--ok);border-color:var(--ok)}
+.bubble pre{margin:0;background:#090e1a !important;padding:11px 13px;font-size:11.5px;overflow-x:auto;line-height:1.6}
+.bubble pre::-webkit-scrollbar{height:3px}
+.bubble pre::-webkit-scrollbar-thumb{background:var(--border-mid);border-radius:2px}
+
+.ctx-note{margin-bottom:7px;padding:4px 8px;background:rgba(0,212,200,.06);
+  border-left:2px solid var(--cyan);border-radius:0 3px 3px 0;font-size:10px;
+  color:var(--teal);font-family:var(--font-mono)}
+
+/* THINKING DOTS */
+.thinking-wrap{display:flex;align-items:center;gap:8px;padding:2px 0;
+  font-size:11px;color:var(--text-3);font-family:var(--font-mono)}
+.thinking-dots{display:flex;gap:4px}
+.thinking-dots span{width:6px;height:6px;background:var(--cyan);border-radius:50%;
+  animation:db 1.4s ease-in-out infinite}
+.thinking-dots span:nth-child(2){animation-delay:.2s}
+.thinking-dots span:nth-child(3){animation-delay:.4s}
+@keyframes db{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(-5px);opacity:1}}
+.stream-cursor{display:inline-block;width:6px;height:13px;background:var(--cyan);
+  border-radius:1px;margin-left:1px;vertical-align:text-bottom;
+  animation:blink .8s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* MODAL */
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;
+  align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:12px}
+#modal.open{display:flex;animation:fadeIn .18s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-box{background:var(--bg-panel);border:1px solid var(--border-cyan);border-radius:var(--r-lg);
+  width:100%;max-width:500px;max-height:80vh;display:flex;flex-direction:column;
+  box-shadow:var(--shadow),var(--glow);animation:slideUp .22s ease}
+@keyframes slideUp{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;
+  border-bottom:1px solid var(--border-lo)}
+.modal-hdr h3{font-size:13px;font-weight:700;color:var(--cyan)}
+.modal-close{background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer;
+  padding:0 3px;line-height:1;transition:color .15s}
+.modal-close:hover{color:var(--text-1)}
+.modal-search{padding:9px 12px;border-bottom:1px solid var(--border-lo)}
+.modal-search input{width:100%;background:var(--bg-surface);border:1px solid var(--border-mid);
+  border-radius:var(--r);color:var(--text-1);font-family:var(--font-mono);font-size:12px;
+  padding:6px 10px;outline:none;transition:border-color .2s}
+.modal-search input:focus{border-color:var(--cyan)}
+.modal-search input::placeholder{color:var(--text-3)}
+#fileList{overflow-y:auto;flex:1;padding:6px 5px}
+#fileList::-webkit-scrollbar{width:3px}
+#fileList::-webkit-scrollbar-thumb{background:var(--border-mid);border-radius:2px}
+.fitem{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:var(--r);
+  cursor:pointer;font-family:var(--font-mono);font-size:11px;color:var(--text-2);
+  transition:all .13s;user-select:none}
+.fitem:hover{background:var(--bg-card);color:var(--text-1)}
+.fitem.sel{background:rgba(0,212,200,.1);color:var(--cyan);border:1px solid rgba(0,212,200,.2)}
+.fitem .fi{font-size:12px;flex-shrink:0}
+.fitem .fp{color:var(--text-3);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#noFiles{text-align:center;padding:22px;color:var(--text-3);font-size:12px;font-family:var(--font-mono)}
+.modal-ftr{display:flex;justify-content:flex-end;gap:8px;padding:11px 13px;
+  border-top:1px solid var(--border-lo);flex-wrap:wrap}
+.btn-ghost{background:none;border:1px solid var(--border-mid);border-radius:var(--r);
+  color:var(--text-2);font-family:var(--font-ui);font-size:12px;font-weight:600;
+  padding:6px 13px;cursor:pointer;transition:all .15s}
+.btn-ghost:hover{border-color:var(--text-2);color:var(--text-1)}
+.btn-primary{background:linear-gradient(135deg,rgba(0,212,200,.18),rgba(79,109,171,.18));
+  border:1px solid var(--cyan);border-radius:var(--r);color:var(--cyan);
+  font-family:var(--font-ui);font-size:12px;font-weight:700;padding:6px 15px;
+  cursor:pointer;transition:all .2s}
+.btn-primary:hover{background:rgba(0,212,200,.22);box-shadow:0 0 12px rgba(0,212,200,.2)}
+
+/* INPUT */
+#inputArea{flex-shrink:0;padding:8px 12px 10px;background:rgba(13,18,32,.85);
+  border-top:1px solid var(--border-lo);backdrop-filter:blur(10px)}
+#inputWrap{display:flex;align-items:flex-end;gap:7px;background:var(--bg-surface);
+  border:1px solid var(--border-mid);border-radius:var(--r-lg);padding:7px 7px 7px 11px;
+  transition:border-color .2s,box-shadow .2s}
+#inputWrap:focus-within{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,212,200,.07),var(--glow)}
+#prompt{flex:1;background:none;border:none;outline:none;color:var(--text-1);
+  font-family:var(--font-mono);font-size:12px;line-height:1.55;resize:none;
+  min-height:36px;max-height:120px;overflow-y:auto}
+#prompt::placeholder{color:var(--text-3)}
+#prompt::-webkit-scrollbar{width:3px}
+#prompt::-webkit-scrollbar-thumb{background:var(--border-mid)}
+#sendBtn{width:32px;height:32px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--cyan),var(--teal));border:none;
+  border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;box-shadow:0 2px 8px rgba(0,212,200,.28)}
+#sendBtn:hover{transform:scale(1.07);box-shadow:0 0 14px rgba(0,212,200,.38)}
+#sendBtn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+#sendBtn svg{width:14px;height:14px;color:#09141f}
+#inputFooter{display:flex;justify-content:space-between;align-items:center;
+  padding:4px 1px 0;flex-wrap:wrap;gap:4px}
+.hint{font-size:10px;color:var(--text-3);font-family:var(--font-mono)}
+.hint kbd{background:var(--bg-elevated);border:1px solid var(--border-mid);
+  border-radius:3px;padding:1px 4px;font-family:var(--font-mono);font-size:9px}
+#clearBtn{background:none;border:none;color:var(--text-3);font-size:10px;
+  font-family:var(--font-ui);cursor:pointer;transition:color .15s}
+#clearBtn:hover{color:var(--danger)}
+
+/* TOAST */
+#toast{position:fixed;bottom:70px;right:12px;background:var(--bg-card);
+  border:1px solid var(--cyan);border-radius:var(--r);color:var(--cyan);
+  font-family:var(--font-mono);font-size:11px;padding:6px 13px;z-index:200;
+  opacity:0;transition:opacity .3s;pointer-events:none;
+  box-shadow:var(--glow);max-width:calc(100vw - 24px)}
+#toast.show{opacity:1}
+
+/* RESPONSIVE */
+@media(max-width:380px){
+  #topbar{gap:5px;padding:0 8px}.logo{font-size:11px}
+  .bubble{font-size:12px;padding:8px 10px}
+  #inputArea{padding:6px 8px 8px}#prompt{font-size:11px}.hint{display:none}}
+@media(max-width:260px){
+  .logo,.vdiv{display:none}#statusPill span{display:none}
+  #topbar{gap:4px;padding:0 6px}.scan-btn span{display:none}
+  #chat{padding:8px 7px;gap:10px}.bubble{font-size:11px;padding:7px 9px}}
+@media(min-width:600px){
+  #topbar{padding:0 18px;gap:12px}#chat{padding:18px 16px;gap:18px}
+  .bubble{font-size:13.5px}#inputArea{padding:10px 16px 12px}
+  #prompt{font-size:13px}.modal-box{max-width:540px}}
+</style>
+</head>
+<body>
+<div id="shell">
+  <div id="topbar">
+    <span class="logo">⟡ Ikaris AI</span>
+    <div class="vdiv"></div>
+    <select id="modelSelector"><option value="">Connecting…</option></select>
+    <button id="refreshBtn" title="Refresh models">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/>
+        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
+      </svg>
+    </button>
+    <div id="statusPill" class="offline"><div class="dot"></div><span>Offline</span></div>
+  </div>
+
+  <div id="scanRow">
+    <button class="scan-btn" id="openScan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <span>Scan Files</span>
+    </button>
+  </div>
+
+  <div id="ctxBar"><span class="label">Context:</span><div id="chips"></div></div>
+
+  <div id="chat">
+    <div id="empty">
+      <div class="moon">🌙</div>
+      <h3>Ikaris AI — Moonlight</h3>
+      <p>Local Ollama. Scan project files for debug context. Batched streaming output.</p>
+    </div>
+  </div>
+
+  <div id="inputArea">
+    <div id="inputWrap">
+      <textarea id="prompt" placeholder="Ask Ikaris… (Shift+Enter for newline)" rows="1"></textarea>
+      <button id="sendBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div id="inputFooter">
+      <span class="hint"><kbd>Enter</kbd> send &nbsp;·&nbsp; <kbd>Shift+Enter</kbd> newline</span>
+      <button id="clearBtn">Clear chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <h3>📂 Scan Project Files</h3>
+      <button class="modal-close" id="closeModal">✕</button>
+    </div>
+    <div class="modal-search">
+      <input id="fileSearch" type="text" placeholder="Filter by filename or extension…"/>
+    </div>
+    <div id="fileList"><div id="noFiles">Open a project folder in the IDE first.</div></div>
+    <div class="modal-ftr">
+      <button class="btn-ghost" id="cancelModal">Cancel</button>
+      <button class="btn-primary" id="attachBtn">Attach Selected</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ── MARKED + HLJS ── */
+marked.setOptions({ breaks: true, gfm: true });
+const renderer = new marked.Renderer();
+
+// Store raw code text by ID so copy doesn't need encode/decode
+const codeStore = {};
+
+renderer.code = (code, lang) => {
+  lang = lang || 'plaintext';
+  let hl;
+  try { hl = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value; }
+  catch { hl = hljs.highlightAuto(code).value; }
+  const id = 'cb' + (Math.random() * 1e9 | 0);
+  codeStore[id] = code;   // store raw text immediately
+  return `<div class="code-wrap">
+    <div class="code-hdr">
+      <span class="lang">${lang}</span>
+      <button class="copy-btn" onclick="copyCode(this,'${id}')">Copy</button>
+    </div>
+    <pre><code class="hljs language-${lang}">${hl}</code></pre>
+  </div>`;
+};
+marked.use({ renderer });
+
+/* ── COPY via Python (bypasses Qt WebEngine sandbox on file://) ── */
+function copyCode(btn, id) {
+  const text = codeStore[id] || '';
+  if (!text) { showToast('Nothing to copy'); return; }
+  if (bridge && bridge.copyToClipboard) {
+    bridge.copyToClipboard(text);
+    btn.textContent = 'Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  } else {
+    showToast('Bridge not ready — try again');
+  }
+}
+
+/* ── STATE ── */
+let bridge       = null;
+let ollamaOnline = false;
+let curModel     = '';
+let ctxFiles     = {};
+let selInModal   = new Set();
+let projectFiles = [];
+let history      = [];
+let streaming    = false;
+let curBubble    = null;   // the .bubble-content div being streamed into
+let accText      = '';     // accumulated response text so far
+
+/* ── BRIDGE INIT ── */
+function initBridge() {
+  if (typeof QWebChannel === 'undefined') { showToast('QWebChannel unavailable'); return; }
+  new QWebChannel(qt.webChannelTransport, ch => {
+    bridge = ch.objects.AIBridge;
+    if (!bridge) { showToast('AIBridge not registered'); return; }
+    bridge.streamChunk.connect(onChunk);
+    bridge.streamDone.connect(onDone);
+    bridge.streamError.connect(onError);
+    bridge.ollamaStatus.connect(onStatus);
+    refreshModels();
+  });
+}
+
+/* ── MODELS ── */
+function refreshModels() {
+  if (!bridge) return;
+  bridge.getModels(result => {
+    try { populateModels(JSON.parse(result)); }
+    catch { populateModels([]); }
+  });
+}
+function populateModels(models) {
+  const sel = document.getElementById('modelSelector');
+  sel.innerHTML = '';
+  if (!models.length) { sel.innerHTML = '<option value="">No models found</option>'; curModel = ''; return; }
+  models.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m.name; o.textContent = m.name; sel.appendChild(o);
+  });
+  curModel = models[0].name;
+}
+function onStatus(online) {
+  ollamaOnline = online;
+  const p = document.getElementById('statusPill');
+  p.className = online ? 'online' : 'offline';
+  p.querySelector('span').textContent = online ? 'Ollama Online' : 'Offline';
+}
+document.getElementById('refreshBtn').addEventListener('click', refreshModels);
+document.getElementById('modelSelector').addEventListener('change', e => { curModel = e.target.value; });
+setInterval(() => { if (bridge) bridge.checkOllama(() => {}); }, 20000);
+
+/* ── STREAM CALLBACKS ── */
+function onChunk(chunk) {
+  // Python sends a batch of tokens joined into one string
+  accText += chunk;
+  if (curBubble) {
+    curBubble.innerHTML = marked.parse(accText) + '<span class="stream-cursor"></span>';
+    document.getElementById('chat').scrollTop = 9999;
+  }
+}
+
+function onDone() {
+  streaming = false;
+  document.getElementById('sendBtn').disabled = false;
+  if (curBubble) {
+    curBubble.innerHTML = marked.parse(accText);   // final render, no cursor
+  }
+  history.push({ role: 'assistant', content: accText });
+  document.getElementById('chat').scrollTop = 9999;
+}
+
+function onError(msg) {
+  streaming = false;
+  document.getElementById('sendBtn').disabled = false;
+  if (curBubble) {
+    curBubble.innerHTML = `<span style="color:var(--danger)">⚠ ${msg}</span>`;
+  }
+}
+
+/* ── SEND ── */
+document.getElementById('prompt').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('sendBtn').addEventListener('click', sendMessage);
+
+function sendMessage() {
+  if (streaming) return;
+  if (!bridge)       { showToast('Bridge not ready.'); return; }
+  if (!ollamaOnline) { showToast('Ollama is offline.'); return; }
+  const text = document.getElementById('prompt').value.trim();
+  if (!text) return;
+  if (!curModel) { showToast('Select a model first.'); return; }
+
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('prompt').value = '';
+  document.getElementById('prompt').style.height = 'auto';
+
+  let sys = 'You are Ikaris, an expert coding assistant inside a developer IDE. ' +
+    'Format all responses using Markdown. Use fenced code blocks with language identifiers. ' +
+    'Be concise and precise. Do NOT modify files — provide output only for the user to review.';
+
+  const ctx = Object.entries(ctxFiles);
+  if (ctx.length) {
+    sys += '\n\nAttached project files for context:\n';
+    ctx.forEach(([p, c]) => { sys += `\n--- FILE: ${p} ---\n${c}\n`; });
+    sys += '\nAnalyze these files when answering. Reference line numbers where helpful.';
+  }
+
+  history.push({ role: 'user', content: text });
+  addUserBubble(text);
+
+  const aiBubbleEl = addAIBubble();
+  curBubble = aiBubbleEl.querySelector('.bubble-content');
+  accText   = '';
+  streaming = true;
+  document.getElementById('sendBtn').disabled = true;
+
+  bridge.chat(curModel, JSON.stringify([{ role: 'system', content: sys }, ...history]));
+}
+
+/* ── BUBBLES ── */
+function addUserBubble(text) {
+  const d = document.createElement('div');
+  d.className = 'msg user';
+  d.innerHTML = `<div class="msg-hdr"><div class="avatar">👤</div><span>You</span></div>
+    <div class="bubble">${esc(text)}</div>`;
+  document.getElementById('chat').appendChild(d);
+  document.getElementById('chat').scrollTop = 9999;
+}
+
+function addAIBubble() {
+  const note = Object.keys(ctxFiles).length
+    ? `<div class="ctx-note">📎 ${Object.keys(ctxFiles).length} file(s) attached</div>` : '';
+  const d = document.createElement('div');
+  d.className = 'msg ai';
+  d.innerHTML = `<div class="msg-hdr"><div class="avatar">🌙</div><span>Ikaris · ${curModel}</span></div>
+    <div class="bubble">${note}
+      <div class="bubble-content">
+        <div class="thinking-wrap">
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+          <span>Generating…</span>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('chat').appendChild(d);
+  document.getElementById('chat').scrollTop = 9999;
+  return d;
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ── CLEAR ── */
+document.getElementById('clearBtn').addEventListener('click', () => {
+  history = [];
+  const chat = document.getElementById('chat');
+  chat.innerHTML = '';
+  const e = document.createElement('div'); e.id = 'empty';
+  e.innerHTML = `<div class="moon">🌙</div><h3>Ikaris AI — Moonlight</h3>
+    <p>Local Ollama. Scan project files for debug context. Batched streaming output.</p>`;
+  chat.appendChild(e);
+});
+
+/* ── FILE SCAN MODAL ── */
+document.getElementById('openScan').addEventListener('click', openModal);
+document.getElementById('closeModal').addEventListener('click', closeModal);
+document.getElementById('cancelModal').addEventListener('click', closeModal);
+document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+
+function openModal() {
+  selInModal = new Set(Object.keys(ctxFiles));
+  renderList(projectFiles);
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('fileSearch').value = '';
+  document.getElementById('fileSearch').focus();
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+document.getElementById('fileSearch').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  renderList(projectFiles.filter(f =>
+    f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)));
+});
+
+function renderList(files) {
+  const fl = document.getElementById('fileList');
+  fl.innerHTML = '';
+  if (!files.length) { fl.innerHTML = '<div id="noFiles">No files found.</div>'; return; }
+  files.forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'fitem' + (selInModal.has(f.path) ? ' sel' : '');
+    div.innerHTML = `<span class="fi">${fileIcon(f.ext||'')}</span>
+      <div style="flex:1;min-width:0">
+        <div>${f.name}</div>
+        <div class="fp" title="${f.path}">${trunc(f.rel||f.path)}</div>
+      </div>`;
+    div.addEventListener('click', () => {
+      if (selInModal.has(f.path)) { selInModal.delete(f.path); div.classList.remove('sel'); }
+      else { selInModal.add(f.path); div.classList.add('sel'); }
+    });
+    fl.appendChild(div);
+  });
+}
+
+document.getElementById('attachBtn').addEventListener('click', () => {
+  closeModal();
+  // remove deselected
+  for (const p of Object.keys(ctxFiles)) {
+    if (!selInModal.has(p)) delete ctxFiles[p];
+  }
+  // load new files — readFile is a result= slot, PyQt5 passes return value to callback
+  const toLoad = [...selInModal].filter(p => !ctxFiles[p]);
+  if (!toLoad.length) { updateCtxBar(); return; }
+  let done = 0;
+  toLoad.forEach(path => {
+    bridge.readFile(path, content => {
+      ctxFiles[path] = content;
+      if (++done === toLoad.length) {
+        updateCtxBar();
+        showToast(`${done} file(s) attached`);
+      }
+    });
+  });
+});
+
+function updateCtxBar() {
+  const bar = document.getElementById('ctxBar');
+  const chips = document.getElementById('chips');
+  chips.innerHTML = '';
+  const paths = Object.keys(ctxFiles);
+  if (!paths.length) { bar.classList.remove('active'); return; }
+  bar.classList.add('active');
+  paths.forEach(p => {
+    const name = p.split('/').pop();
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `${name}<span class="chip-x">✕</span>`;
+    chip.querySelector('.chip-x').addEventListener('click', () => { delete ctxFiles[p]; updateCtxBar(); });
+    chips.appendChild(chip);
+  });
+}
+
+/* ── CALLED FROM PYTHON ── */
+window.setProjectFiles = function(json) {
+  try { projectFiles = JSON.parse(json); } catch { projectFiles = []; }
+};
+
+/* ── AUTO-RESIZE ── */
+document.getElementById('prompt').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+/* ── UTILS ── */
+const ICONS = {py:'🐍',js:'🟨',ts:'🔷',jsx:'⚛',tsx:'⚛',html:'🌐',css:'🎨',
+  json:'📋',md:'📝',kt:'🟣',java:'☕',cpp:'⚙',c:'⚙',h:'⚙',sh:'🐚',
+  yml:'⚙',yaml:'⚙',toml:'⚙',xml:'📰',sql:'🗄',rs:'🦀',go:'🐹',rb:'💎'};
+function fileIcon(ext) { return ICONS[(ext||'').replace('.','').toLowerCase()]||'📄'; }
+function trunc(s,n=45) { return s.length>n?'…'+s.slice(-(n-1)):s; }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+window.addEventListener('load', initBridge);
+</script>
+</body>
+</html>

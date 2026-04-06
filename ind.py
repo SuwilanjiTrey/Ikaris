@@ -18,6 +18,9 @@ from components.Terminal import TerminalManager
 from utils.tree_features import setup_tree_context_menu, toolbar_new_file
 from utils.git_bridge import GitBridge
 from utils.themes import ThemeEngine
+from components.AI import AIPanel
+from components.new_project import NewProjectWidget
+
 
 
 class WebBridge(QObject, GitBridge):
@@ -81,6 +84,7 @@ class CustomFileSystemModel(QFileSystemModel):
         # Load custom icons
         self.kotlin_icon = QIcon('images/fileIcons/kotlin.png')  # Replace with actual path
         self.java_icon = QIcon('images/fileIcons/java2.png')      # Replace with actual path
+        self.javaClass_icon = QIcon('images/fileIcons/javaClass.png')      # Replace with actual path
         self.gradle_icon = QIcon('images/fileIcons/gradle.png')  # Replace with actual path
         self.xml_icon = QIcon('images/fileIcons/xml.png')  # Replace with actual path
         self.kts_icon = QIcon('images/fileIcons/kts2.png')  # Replace with actual path
@@ -119,6 +123,8 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.kotlin_icon
             elif file_name.endswith('.java'):
                 return self.java_icon
+            elif file_name.endswith('.class'):
+                return self.javaClass_icon
             elif file_name.endswith('.gradle'):
                 return self.gradle_icon
             elif file_name.endswith('.xml'):
@@ -151,13 +157,13 @@ class CustomFileSystemModel(QFileSystemModel):
                 return self.CPP_icon
             elif file_name.endswith('.py'):
                 return self.python_icon
-            elif file_name.endswith('.png') or file_name.endswith('.gif') or file_name.endswith('.jpg') or file_name.endswith('.bmp') or file_name.endswith('.jpeg') or file_name.endswith('.webp'):
+            elif file_name.endswith(('.png','.gif','.jpg','.bmp','.jpeg','.webp')):
                 return self.image_icon
             elif file_name.endswith('.tsx'):
                 return self.react_icon
             elif file_name.endswith('.jsx'):
                 return self.react_icon
-            elif file_name.endswith('.sql') or file_name.endswith('.db'):
+            elif file_name.endswith(('.sql','.db')):
                 return self.database_icon
             elif file_name.endswith('.apk'):
                 return self.android_icon
@@ -187,6 +193,8 @@ class CodeEditor(QMainWindow):
         
         ############   Themes
         self.theme_engine = ThemeEngine(self)
+        self.themePage_visible = False
+        self.Ai_visible = False
         
         
         
@@ -223,6 +231,44 @@ class CodeEditor(QMainWindow):
         self.setWindowTitle(f"Ikaris Dev Studio - 2024-V3 TM.")
         self.setGeometry(100, 100, 1200, 800)
         self.setWindowIcon(QIcon('images/ANDROID_MINI.png'))
+        
+        ## create a menu bar and place "files" and "create project"
+# --- MENU BAR SETUP ---
+        menubar = self.menuBar() # Access the native QMainWindow menu bar
+        
+        # 1. File Menu
+        file_menu = menubar.addMenu("&File")
+        
+        # Create 'New Project' Action
+        new_project_act = QAction("Create Project", self)
+        new_project_act.setShortcut("Ctrl+N")
+        new_project_act.triggered.connect(self.start_project) # Connect to your function
+        file_menu.addAction(new_project_act)
+        
+        # Add a separator
+        file_menu.addSeparator()
+        
+        # Create 'New Project' Action
+        open_folder = QAction("Open Folder", self)
+        open_folder.setShortcut("Ctrl+Shift+O")
+        open_folder.triggered.connect(self.open_file_searcher) # Connect to your function
+        file_menu.addAction(open_folder)
+        
+        # Add a separator
+        file_menu.addSeparator()
+        
+        
+        # Create 'Exit' Action
+        exit_act = QAction("Exit", self)
+        exit_act.triggered.connect(self.close)
+        file_menu.addAction(exit_act)
+
+        # 2. Add other menus (Example: View)
+        view_menu = menubar.addMenu("&View")
+        toggle_terminal_act = QAction("Toggle Terminal", self)
+        toggle_terminal_act.triggered.connect(self.toggle_terminal) # Example function
+        view_menu.addAction(toggle_terminal_act)
+       
 
         # Create main widget and layout
         main_widget = QWidget()
@@ -237,6 +283,8 @@ class CodeEditor(QMainWindow):
         left_sidebar_layout = QVBoxLayout(left_sidebar)
         left_sidebar_layout.setContentsMargins(5, 5, 5, 5)
         left_sidebar_layout.setSpacing(2)
+        
+        
 
         # Create right-side container for everything else
         right_container = QWidget()
@@ -257,6 +305,13 @@ class CodeEditor(QMainWindow):
         tree_layout = QVBoxLayout(self.tree_container)
         tree_layout.setContentsMargins(0, 0, 0, 0)
         tree_layout.setSpacing(2)
+        
+        # Create Right sidebar for AI
+        self.ai_container = QWidget()
+        self.ai_container.setMinimumWidth(200)
+        self.ai_container_layout = QVBoxLayout(self.ai_container)
+        self.ai_container_layout.setContentsMargins(0, 0, 0, 0)
+        self.ai_container_layout.setSpacing(2)
 
         # Create tree operations toolbar
         tree_toolbar = QWidget()
@@ -271,7 +326,7 @@ class CodeEditor(QMainWindow):
             ('New File', 'images/UI/newdoc.png', self.create_new_file),
             ('Delete', 'images/UI/delete.png', self.delete_file),
             ('Rename', 'images/UI/rename.png', self.rename_file),
-            ('AI', 'images/UI/ai.png', self.AI),
+            #('AI', 'images/UI/ai.png',lambda: self.AI()),
         ]
 
         for text, icon_path, callback in file_op_buttons:
@@ -299,6 +354,7 @@ class CodeEditor(QMainWindow):
         # Add tree and editor to horizontal splitter
         self.main_splitter.addWidget(self.tree_container)
         self.main_splitter.addWidget(editor_container)
+        self.main_splitter.addWidget(self.ai_container)
 
         # Create terminal container (initially hidden)
         self.terminal_container = QWidget()
@@ -330,17 +386,19 @@ class CodeEditor(QMainWindow):
         # Add sidebar and right container to main layout
         main_layout.addWidget(left_sidebar)
         main_layout.addWidget(right_container)
+        #main_layout.addWidget(self.ai_container)
 
         # Create sidebar buttons
         self.create_sidebar_buttons(left_sidebar_layout)
 
         # Set initial splitter sizes for horizontal splitter
-        self.main_splitter.setSizes([250, 950])
+        self.main_splitter.setSizes([0, 1200, 0])
 
         # Initialize state variables
         self.current_file = None
         self.tree_visible = False
         self.tree_container.setVisible(self.tree_visible)
+        self.ai_container.setVisible(self.Ai_visible)
 
         
         # Create the fixed AI button
@@ -365,15 +423,16 @@ class CodeEditor(QMainWindow):
     def create_sidebar_buttons(self, layout):
         # Create buttons with icons (excluding file operations)
         buttons_data = [
-            ('Toggle Tree', 'images/UI/folder-tree.png', lambda: self.toggle_tree_view()),
-            ('Create Project', 'images/UI/layer-plus.png', self.start_project),
-            ('Run', 'images/UI/play.png', self.run_code),
+            ('Toggle Tree', 'images/UI/file.png', lambda: self.toggle_tree_view()),
+            #('Create Project', 'images/UI/layer-plus.png', self.start_project),
+            ('Run', 'images/UI/play2.png', self.run_code),
             ('commit', 'images/UI/code-branch.png',lambda: self.github()),
-            ('run server', 'images/UI/database-management.png', self.run_server),
-            ('Plugins', 'images/UI/apps-add.png', lambda: self.plugins()),
-            ('open existing project', 'images/UI/folder-open.png', self.open_file_searcher),
+            ('run server', 'images/UI/database.png', self.run_server),
+            ('Plugins', 'images/UI/menu.png', lambda: self.plugins()),
+            #('open existing project', 'images/UI/folder-open.png', self.open_file_searcher),
             ('open terminal', 'images/UI/terminal2.png', self.toggle_terminal),
-            ('settings', 'images/UI/settings.png',lambda: self.settings())
+            ('settings', 'images/UI/gear.png',lambda: self.settings()),
+            ('AI', 'images/UI/ai.png',lambda: self.AI()),
         ]
 
         for text, icon_path, callback in buttons_data:
@@ -531,7 +590,23 @@ class CodeEditor(QMainWindow):
         self.themes_page.load(QUrl.fromLocalFile(os.path.abspath("web/themes.html")))
         self.theme_engine.setup(self.themes_page)
         self.theme_engine.apply_saved_theme()   # applies on startup
+
+        ## new project page
+
+        self.new_project_page = NewProjectWidget(self)
+        self.new_project_page.project_created.connect(self.update_directory)
+        layout.addWidget(self.new_project_page)
+        self.new_project_page.setVisible(False)
         
+        
+        # AI channel
+        from components.AI import AIPanel
+        self.ai_panel = AIPanel(
+            container   = self.ai_container,
+            layout      = self.ai_container_layout,
+            main_window = self,
+            channel     = self.channel,   # reuse your existing channel
+        )
         
         
         self.image_label = QLabel()
@@ -551,7 +626,9 @@ class CodeEditor(QMainWindow):
         layout.addWidget(self.image_label)
         layout.addWidget(self.gitHandler)
         layout.addWidget(self.settings_page)
+        layout.addWidget(self.themes_page)
         layout.addWidget(self.current_file_tabs)
+        layout.addWidget(self.new_project_page)
 
         
         self.editor.setVisible(False)
@@ -560,7 +637,8 @@ class CodeEditor(QMainWindow):
         self.plugin_page.setVisible(False)
         self.gitHandler.setVisible(False)
         self.settings_page.setVisible(False)
-        
+        self.themes_page.setVisible(False)
+        self.new_project_page.setVisible(False)        
 
 
     
@@ -572,23 +650,18 @@ class CodeEditor(QMainWindow):
         return button
 
     def toggle_tree_view(self, flag=None):
-        # Qt signals often send 'False' by default. 
-        # We only want to use 'flag' if it's explicitly a boolean 
-        # AND we aren't being called by a generic trigger.
-        
-        # Simple fix: If flag is a boolean (from Qt), ignore it and just toggle.
-        # If you want to force a state, call it like: self.toggle_tree_view(True)
         if flag is None or isinstance(flag, bool):
             self.tree_visible = not self.tree_visible
         else:
             self.tree_visible = flag
 
         self.tree_container.setVisible(self.tree_visible)
-        
+        ai_width = 300 if self.Ai_visible else 0
+
         if self.tree_visible:
-            self.main_splitter.setSizes([250, 950])
+            self.main_splitter.setSizes([250, 950 - ai_width, ai_width])
         else:
-            self.main_splitter.setSizes([0, 1200])
+            self.main_splitter.setSizes([0, 1200 - ai_width, ai_width])
 
     def apply_dark_theme(self):
         self.setStyleSheet("""
@@ -1318,6 +1391,7 @@ class CodeEditor(QMainWindow):
             self.image_label.setVisible(False)
             self.settings_page.setVisible(False)
             self.gitHandler.setVisible(False)
+            self.themes_page.setVisible(False)
 
         else:
             # HIDE plugins page
@@ -1370,6 +1444,7 @@ class CodeEditor(QMainWindow):
             self.image_label.setVisible(False)
             self.gitHandler.setVisible(False)
             self.plugin_page.setVisible(False)
+            self.themes_page.setVisible(False)
 
         else:
             # HIDE settings page
@@ -1386,6 +1461,7 @@ class CodeEditor(QMainWindow):
                 self.settings_page.setVisible(False)
                 self.gitHandler.setVisible(False)
                 self.plugin_page.setVisible(False)
+                self.themes_page.setVisible(False)
         
 
     def refresh_ui(self):
@@ -1414,7 +1490,28 @@ class CodeEditor(QMainWindow):
     
 
     def start_project(self):
-        pass
+        self.new_project_visible = not getattr(self, 'new_project_visible', False)
+
+        if self.new_project_visible:
+            self.new_project_page.setVisible(True)
+            self.landing_page.setVisible(False)
+            self.current_file_tabs.setVisible(False)
+            self.editor.setVisible(False)
+            self.image_label.setVisible(False)
+            self.gitHandler.setVisible(False)
+            self.plugin_page.setVisible(False)
+            self.settings_page.setVisible(False)
+            self.themes_page.setVisible(False)
+        else:
+            self.new_project_page.setVisible(False)
+
+            if self.current_file_tabs.count() == 0:
+                self.landing_page.setVisible(True)
+                self.current_file_tabs.setVisible(False)
+            else:
+                self.current_file_tabs.setVisible(True)
+                self.landing_page.setVisible(False)
+        
 
 
     def github(self):
@@ -1431,6 +1528,7 @@ class CodeEditor(QMainWindow):
             self.editor.setVisible(False)
             self.image_label.setVisible(False)
             self.settings_page.setVisible(False)
+            self.themes_page.setVisible(False)
 
         else:
             # HIDE plugins page
@@ -1448,8 +1546,16 @@ class CodeEditor(QMainWindow):
         pass
         
            
-        
-
+    def show_themes_page(self):
+        self.themes_page.setVisible(True)
+        self.landing_page.setVisible(False)
+        self.current_file_tabs.setVisible(False)
+        self.editor.setVisible(False)
+        self.image_label.setVisible(False)
+        self.gitHandler.setVisible(False)
+        self.plugin_page.setVisible(False)
+        self.settings_page.setVisible(False)
+    
 
 
 
@@ -1495,13 +1601,30 @@ class CodeEditor(QMainWindow):
                 # at the end of update_directory()
                 self.terminal_manager.set_cwd(path_string)
                 self.bridge.git_refresh()
+                self.ai_panel.set_project_root(path_string)
+                self.new_project_visible = False
+                self.new_project_page.setVisible(False)
         else:
             print(f"Invalid directory: {new_directory}")  # Debug print
             QMessageBox.warning(self, 'Error', f'Invalid directory: {new_directory}')
 
 
     def AI(self):
-        pass
+        print("toggled ai button")
+        print(f"current state: {self.Ai_visible}")
+        self.Ai_visible = not self.Ai_visible
+        
+        self.ai_container.setVisible(self.Ai_visible)
+        
+        tree_width = 250 if self.tree_visible else 0
+        ai_width   = 300 if self.Ai_visible  else 0
+        mid_width  = 1200 - tree_width - ai_width
+        
+        self.main_splitter.setSizes([tree_width, mid_width, ai_width])
+        self.ai_panel.set_project_root(self.base_directory)
+            
+            
+       
 
 
 
