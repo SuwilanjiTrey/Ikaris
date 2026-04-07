@@ -18,7 +18,7 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWebChannel       import QWebChannel
 
 
-OLLAMA_BASE         = "" #http://127.0.0.1:11434
+OLLAMA_BASE         = "http://192.168.1.206:5001" #http://127.0.0.1:11434
 MAX_FILE_SIZE_BYTES = 256 * 1024
 MAX_FILES_RETURNED  = 300
 
@@ -266,4 +266,5 @@ class FixedAIButton:
     def show(self):            pass
     def setVisible(self, v):   pass
     def set_position(self, p): pass
-    def update_position(self): pass
+    def update_position(self): pass
+

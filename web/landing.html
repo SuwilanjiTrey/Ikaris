@@ -1,203 +1,913 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Nova IDE</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+<meta charset="UTF-8">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<title>Ikaris Dev Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
 
-  <!-- Google Font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Inter', sans-serif;
-    }
+:root {
+--ink:     #0a0c12;
+  --ink1:    #111420;
+  --ink2:    #1a1e2e;
+  --ink3:    #252a3d;
+  --border:  #2a2f45;
+  --text:    #c8cde0;
+  --muted:   #5a607a;
+  --bright:  #e8ecf8;
+  --accent:  #4f8eff;
+  --accent2: #b06fff;
+  --green:   #3ddc84;
+  --amber:   #ffb020;
+  --red:     #ff5a5a;
+  --cyan:    #00d4ff;
+  --django:  #224B11;
+  --gold1: 	 #DBC629;
+  --gold2: 	 #DBAE0F;
+  --mono:    'Space Mono', monospace;
+  --display: 'Syne', sans-serif;
+}
 
-    body {
-      background: #0b0f1a;
-      color: #e5e7eb;
-      overflow-x: hidden;
-    }
+html, body {
+  height: 100%;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 13px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  cursor: default;
+}
 
-    /* NAVBAR */
-    .navbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px 60px;
-    }
+/* ── Noise grain overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: .5;
+}
 
-    .logo {
-      font-weight: 600;
-      font-size: 20px;
-      letter-spacing: 1px;
-    }
+/* ── Ambient glow blobs ── */
+.blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: .18;
+  animation: blobDrift 14s ease-in-out infinite alternate;
+}
+.blob1 { width: 500px; height: 500px; background: var(--accent);  top: -100px; left: -80px; animation-delay: 0s; }
+.blob2 { width: 400px; height: 400px; background: var(--accent2); bottom: -60px; right: -60px; animation-delay: -6s; }
+.blob3 { width: 300px; height: 300px; background: var(--cyan);    top: 40%; left: 50%; animation-delay: -3s; opacity: .08; }
 
-    .nav-links a {
-      margin-left: 25px;
-      text-decoration: none;
-      color: #9ca3af;
-      transition: 0.3s;
-    }
+@keyframes blobDrift {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(30px, 20px) scale(1.08); }
+}
 
-    .nav-links a:hover {
-      color: white;
-    }
+/* ── Page shell ── */
+.page {
+  position: relative;
+  z-index: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 32px 60px;
+}
 
-    /* HERO */
-    .hero {
-      text-align: center;
-      padding: 120px 20px 80px;
-    }
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 0 0;
+}
 
-    .hero h1 {
-      font-size: 48px;
-      font-weight: 600;
-      background: linear-gradient(90deg, #60a5fa, #a78bfa);
-      -webkit-background-clip: text;
-      color: transparent;
-    }
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wordmark-icon {
+  width: 34px; height: 34px;
+  background: linear-gradient(135deg, var(--gold1), var(--gold2));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 0 20px rgba(79,142,255,.35);
+}
 
-    .hero p {
-      margin-top: 20px;
-      font-size: 18px;
-      color: #9ca3af;
-    }
 
-    .buttons {
-      margin-top: 30px;
-    }
 
-    .btn {
-      padding: 12px 20px;
-      border-radius: 8px;
-      margin: 5px;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-    }
+.wordmark-text {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--bright);
+  letter-spacing: -.3px;
+}
+.wordmark-version {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+}
 
-    .primary {
-      background: linear-gradient(90deg, #6366f1, #8b5cf6);
-      color: white;
-    }
+.header-actions { display: flex; gap: 8px; }
 
-    .secondary {
-      background: transparent;
-      border: 1px solid #374151;
-      color: #e5e7eb;
-    }
+/* ── Hero ── */
+.hero {
+  padding: 72px 0 0;
+  text-align: center;
+  position: relative;
+}
 
-    /* FEATURES */
-    .features {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
-      padding: 60px;
-    }
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  opacity: 0;
+  animation: fadeUp .6s .1s forwards;
+}
 
-    .card {
-      background: #111827;
-      padding: 20px;
-      border-radius: 12px;
-      transition: 0.3s;
-      border: 1px solid #1f2937;
-    }
+.hero h1 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(36px, 5vw, 58px);
+  line-height: 1.1;
+  color: var(--bright);
+  letter-spacing: -1.5px;
+  opacity: 0;
+  animation: fadeUp .7s .2s forwards;
+}
 
-    .card:hover {
-      transform: translateY(-5px);
-      border-color: #6366f1;
-    }
+.hero h1 .grad {
+  background: linear-gradient(100deg, var(--accent) 0%, var(--cyan) 40%, var(--accent2) 80%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 
-    .card h3 {
-      margin-bottom: 10px;
-    }
+.hero-sub {
+  margin-top: 18px;
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+  opacity: 0;
+  animation: fadeUp .7s .3s forwards;
+}
 
-    .card p {
-      font-size: 14px;
-      color: #9ca3af;
-    }
+.hero-cta {
+  margin-top: 36px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  opacity: 0;
+  animation: fadeUp .7s .4s forwards;
+}
 
-    /* FOOTER */
-    footer {
-      text-align: center;
-      padding: 30px;
-      color: #6b7280;
-      font-size: 14px;
-    }
-  </style>
-  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-  
+/* ── Buttons ── */
+.btn {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, background .15s;
+  letter-spacing: .2px;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(79,142,255,.3);
+}
+.btn-primary:hover { box-shadow: 0 6px 28px rgba(79,142,255,.45); }
+.btn-ghost {
+  background: var(--ink2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { background: var(--ink3); border-color: var(--muted); }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.btn-danger { background: rgba(255,90,90,.15); color: var(--red); border: 1px solid rgba(255,90,90,.2); }
+.btn-danger:hover { background: rgba(255,90,90,.25); }
+
+/* ── Language orbit ── */
+.orbit-section {
+  margin-top: 60px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  opacity: 0;
+  animation: fadeUp .7s .5s forwards;
+}
+
+.lang-orb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+
+.lang-icon-wrap {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: var(--ink2);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.lang-icon-wrap img{
+  width: 42px; height: 42px;
+  object-fit: contain;
+  transform-origin: center;
+}
+
+.lang-icon-wrap .django{
+background: var(--django);
+}
+
+
+.lang-icon-wrap:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 16px rgba(79,142,255,.25);
+}
+.lang-icon-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.04), transparent);
+  pointer-events: none;
+}
+.lang-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: .5px;
+}
+
+/* ── React spin ── */
+@keyframes reactSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.anim-react { animation: reactSpin 8s linear infinite; display: inline-block; }
+
+/* ── Java steam ── */
+@keyframes steamRise {
+  0%   { transform: translateY(0)   scaleX(1);   opacity: .7; }
+  50%  { transform: translateY(-8px) scaleX(1.2); opacity: .4; }
+  100% { transform: translateY(-14px) scaleX(.8); opacity: 0; }
+}
+.anim-java { position: relative; display: inline-block; }
+.anim-java::before,
+.anim-java::after {
+  content: '~';
+  position: absolute;
+  font-size: 8px;
+  color: rgba(200,220,255,.6);
+  animation: steamRise 1.8s ease-out infinite;
+}
+.anim-java::before { top: -10px; left: 6px;  animation-delay: 0s; }
+.anim-java::after  { top: -8px;  left: 14px; animation-delay: .5s; }
+
+/* ── Python slither ── */
+@keyframes pythonWiggle {
+  0%,100% { transform: rotate(-4deg); }
+  50%      { transform: rotate(4deg); }
+}
+.anim-python { display: inline-block; animation: pythonWiggle 2.5s ease-in-out infinite; }
+
+/* ── Expo pulse ── */
+@keyframes expoPulse {
+  0%,100% { transform: scale(1);    filter: none; }
+  50%      { transform: scale(1.15); filter: drop-shadow(0 0 6px rgba(0,212,255,.5)); }
+}
+.anim-expo { display: inline-block; animation: expoPulse 2.2s ease-in-out infinite; }
+
+/* ── Django heartbeat ── */
+@keyframes djangoHeart {
+  0%,100% { transform: scale(1); }
+  14%      { transform: scale(1.15); }
+  28%      { transform: scale(1); }
+  42%      { transform: scale(1.1); }
+  56%      { transform: scale(1); }
+}
+.anim-django { display: inline-block; animation: djangoHeart 2.5s ease-in-out infinite; }
+
+/* ── Spring float ── */
+@keyframes springFloat {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+.anim-spring { display: inline-block; animation: springFloat 2s ease-in-out infinite; }
+
+/* ── Kotlin bounce ── */
+@keyframes kotlinBounce {
+  0%,100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-3px) rotate(5deg); }
+}
+.anim-kotlin { display: inline-block; animation: kotlinBounce 1.8s ease-in-out infinite; }
+
+/* ── Next glitch ── */
+@keyframes nextGlitch {
+  0%,95%,100% { transform: none; opacity: 1; }
+  96%          { transform: translate(-2px,1px); opacity: .8; }
+  97%          { transform: translate(2px,-1px); opacity: .9; }
+  98%          { transform: translate(-1px,2px); opacity: .7; }
+}
+.anim-next { display: inline-block; animation: nextGlitch 4s ease-in-out infinite; }
+
+/* ── Vite lightning ── */
+@keyframes viteLightning {
+  0%,90%,100% { filter: none; }
+  91%          { filter: drop-shadow(0 0 8px gold); }
+  93%          { filter: none; }
+  94%          { filter: drop-shadow(0 0 12px gold); }
+}
+.anim-vite { display: inline-block; animation: viteLightning 3s ease-in-out infinite; }
+
+/* ── Divider ── */
+.section-divider {
+  margin: 52px 0 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* ── Section headers ── */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.section-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--bright);
+  letter-spacing: -.2px;
+}
+.section-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* ── Recent projects ── */
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.project-card {
+  background: var(--ink1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: border-color .18s, transform .18s, background .18s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+  animation: fadeUp .5s both;
+}
+.project-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  opacity: 0;
+  transition: opacity .2s;
+}
+.project-card:hover {
+  border-color: var(--accent);
+  background: var(--ink2);
+  transform: translateY(-2px);
+}
+.project-card:hover::before { opacity: 1; }
+
+.project-card-dead {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.project-card-dead:hover { transform: none; border-color: var(--red); }
+
+.pc-header { display: flex; align-items: center; gap: 10px; }
+.pc-icon {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  background: var(--ink3);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.pc-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-type {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+.pc-path {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+}
+.pc-time {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+.pc-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.project-card:hover .pc-remove { opacity: 1; }
+.pc-remove:hover { color: var(--red); background: rgba(255,90,90,.12); }
+
+.pc-missing-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--red);
+  background: rgba(255,90,90,.1);
+  border: 1px solid rgba(255,90,90,.2);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* ── Empty state ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 10px;
+  color: var(--muted);
+}
+.empty-icon { font-size: 36px; opacity: .5; }
+.empty-title { font-size: 14px; color: var(--text); font-weight: 600; }
+.empty-sub { font-size: 12px; text-align: center; max-width: 260px; line-height: 1.6; }
+
+/* ── Quick actions ── */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.qa-card {
+  background: var(--ink1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: border-color .15s, background .15s;
+  user-select: none;
+}
+.qa-card:hover { background: var(--ink2); border-color: var(--accent); }
+.qa-icon { font-size: 18px; flex-shrink: 0; }
+.qa-label { font-size: 12px; font-weight: 600; color: var(--bright); }
+
+/* ── Tip bar ── */
+.tip-bar {
+  margin-top: 48px;
+  background: var(--ink1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tip-bar .tip-icon { font-size: 16px; flex-shrink: 0; }
+.tip-bar .tip-key {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--ink3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text);
+}
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+</style>
 </head>
 <body>
 
-  <!-- NAVBAR -->
-  <div class="navbar">
-    <div class="logo">⚡ Nova IDE</div>
-    <div class="nav-links">
-      <a href="#">Features</a>
-      <a href="#">Docs</a>
-      <a href="#">Pricing</a>
+<!-- Ambient blobs -->
+<div class="blob blob1"></div>
+<div class="blob blob2"></div>
+<div class="blob blob3"></div>
+
+<div class="page">
+
+  <!-- ── Header ── -->
+  <header>
+    <div class="wordmark">
+      <div class="wordmark-icon">
+	<img src="../images/ikaris_logo.png">
+	</div>
+      <span class="wordmark-text">Ikaris</span>
+      <span class="wordmark-version">v4.0</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="openFolder()">Open Folder</button>
+      <button class="btn btn-primary btn-sm" onclick="newProject()">+ New Project</button>
+    </div>
+  </header>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-eyebrow">Ikaris Dev Studio</div>
+    <h1>
+      Build without<br>
+      <span class="grad">limits.</span>
+    </h1>
+    <p class="hero-sub">
+      A full-featured development environment for Python, Java, Android, and Web —
+      built on PyQt5 with real PTY terminals, live syntax highlighting,
+      and a theme engine that goes all the way down.
+    </p>
+    <div class="hero-cta">
+      <button class="btn btn-primary" onclick="newProject()">🚀 New Project</button>
+      <button class="btn btn-ghost"   onclick="openFolder()">📂 Open Folder</button>
+    </div>
+  </section>
+
+  <!-- ── Language orbit ── -->
+  <div class="orbit-section">
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-react">
+	<img
+	src="../images/fileIcons/react.png"
+	>
+	</span>
+	</div>
+      <span class="lang-label">React</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-next">
+      	<img
+		src="../images/fileIcons/Next-js.png"
+		>
+      </span></div>
+      <span class="lang-label">Next.js</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-vite">
+      	<img
+		src="../images/fileIcons/vite.png"
+		>
+      </span></div>
+      <span class="lang-label">Vite</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-expo">
+      	<img
+		src="../images/fileIcons/expo.png"
+		>
+      </span></div>
+      <span class="lang-label">Expo</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-python">
+	<img
+	src="../images/fileIcons/python.png"
+	
+	>	
+
+	</span></div>
+      <span class="lang-label">Python</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-django">
+      	<img
+		src="../images/fileIcons/django.png"
+		>
+      
+      </span></div>
+      <span class="lang-label">Django</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-java">
+
+	<img
+	src="../images/fileIcons/java.png"
+	
+	>	
+	</span>
+	</div>
+      <span class="lang-label">Java</span>
+    </div>
+    <div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-spring">
+        <img
+    		src="../images/fileIcons/spring.webp"
+		>
+</span></div>
+<span class="lang-label">Spring</span>
+</div>
+<div class="lang-orb">
+      <div class="lang-icon-wrap"><span class="anim-kotlin">
+	<img
+	src="../images/fileIcons/kotlin.png"
+	
+	>	
+
+</span></div>
+      <span class="lang-label">Kotlin</span>
     </div>
   </div>
 
-  <!-- HERO -->
-  <section class="hero">
-    <h1>Code Faster. Build Smarter.</h1>
-    <p>The next-generation IDE built for speed, simplicity, and developers who move fast.</p>
+  <div class="section-divider"></div>
 
-    <div class="buttons"> 
-      <button onclick="OpenFiles()" class="btn primary">Open Files</button>
-      <button onclick="callPython()"  class="btn secondary">Hello world</button>
+  <!-- ── Recent Projects ── -->
+  <section style="margin-top: 44px; animation: fadeUp .6s .55s both;">
+    <div class="section-head">
+      <span class="section-title">Recent Projects</span>
+      <span class="section-meta" id="recentMeta">Loading…</span>
+    </div>
+    <div class="recent-grid" id="recentGrid">
+      <!-- populated by JS -->
     </div>
   </section>
 
-  <!-- FEATURES -->
-  <section class="features">
-    <div class="card">
-      <h3>⚡ Lightning Fast</h3>
-      <p>Optimized performance that keeps up with your workflow.</p>
-    </div>
+  <div class="section-divider"></div>
 
-    <div class="card">
-      <h3>🌐 Cloud Sync</h3>
-      <p>Access your projects anywhere, anytime.</p>
+  <!-- ── Quick Actions ── -->
+  <section style="margin-top: 36px; animation: fadeUp .6s .65s both;">
+    <div class="section-head">
+      <span class="section-title">Quick Actions</span>
     </div>
-
-    <div class="card">
-      <h3>🧠 Smart Autocomplete</h3>
-      <p>AI-powered suggestions that speed up development.</p>
-    </div>
-
-    <div class="card">
-      <h3>🎨 Clean UI</h3>
-      <p>A distraction-free interface designed for focus.</p>
+    <div class="quick-grid">
+      <div class="qa-card" onclick="newProject()">
+        <span class="qa-icon">🚀</span>
+        <span class="qa-label">New Project</span>
+      </div>
+      <div class="qa-card" onclick="openFolder()">
+        <span class="qa-icon">📂</span>
+        <span class="qa-label">Open Folder</span>
+      </div>
+      <div class="qa-card" onclick="openTerminal()">
+        <span class="qa-icon">⬛</span>
+        <span class="qa-label">Terminal</span>
+      </div>
+      <div class="qa-card" onclick="openGit()">
+        <span class="qa-icon">⎇</span>
+        <span class="qa-label">Git</span>
+      </div>
+      <div class="qa-card" onclick="openSettings()">
+        <span class="qa-icon">⚙</span>
+        <span class="qa-label">Settings</span>
+      </div>
+      <div class="qa-card" onclick="openThemes()">
+        <span class="qa-icon">🎨</span>
+        <span class="qa-label">Theme Studio</span>
+      </div>
     </div>
   </section>
 
-  <!-- FOOTER -->
-  <footer>
-    © 2026 Nova IDE — Built for Developers
-  </footer>
+  <!-- ── Tip bar ── -->
+  <div class="tip-bar" style="animation: fadeUp .6s .75s both;">
+    <span class="tip-icon">💡</span>
+    <span>
+      <span class="tip-key">Ctrl+T</span> terminal &nbsp;·&nbsp;
+      <span class="tip-key">Ctrl+B</span> file tree &nbsp;·&nbsp;
+      <span class="tip-key">Ctrl+S</span> save &nbsp;·&nbsp;
+      <span class="tip-key">Ctrl+Shift+I</span> AI panel &nbsp;·&nbsp;
+      <span class="tip-key">Ctrl+G</span> git &nbsp;·&nbsp;
+      <span class="tip-key">Ctrl+F</span> find &amp; replace
+    </span>
+  </div>
 
-</body>
+</div><!-- /page -->
+
 <script>
-		var handler;
-		new QWebChannel(qt.webChannelTransport, function (channel){
-			handler = channel.objects.WebBridge;
-		});
+// ─── Bridge ──────────────────────────────────────────────────────────────────
+var bridge  = null;
+var recents = null;
 
-		function callPython(){
-		if (handler) handler.testing();
-		}
-		
-		function OpenFiles(){
-			if (handler) handler.OpenFiles();
-		}
-	</script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof qt !== 'undefined') {
+    new QWebChannel(qt.webChannelTransport, function(ch) {
+      bridge  = ch.objects.WebBridge;
+      recents = ch.objects.RecentProjects;
+      loadRecents();
+    });
+  } else {
+    loadRecents();   // dev mode — renders empty state
+  }
+});
 
+// ─── Recent projects ──────────────────────────────────────────────────────────
+function loadRecents() {
+  if (!recents) { renderRecents([]); return; }
+  recents.get_recent(function(raw) {
+    var list = JSON.parse(raw);
+    renderRecents(list);
+  });
+}
+
+function renderRecents(list) {
+  var grid = document.getElementById('recentGrid');
+  var meta = document.getElementById('recentMeta');
+
+  if (!list || !list.length) {
+    meta.textContent = '0 projects';
+    grid.innerHTML =
+      '<div class="empty-state" style="grid-column:1/-1">' +
+      '  <div class="empty-icon">🗂</div>' +
+      '  <div class="empty-title">No recent projects</div>' +
+      '  <div class="empty-sub">Create or open a project to see it here.</div>' +
+      '</div>';
+    return;
+  }
+
+  meta.textContent = list.length + ' project' + (list.length === 1 ? '' : 's');
+  grid.innerHTML = list.map(function(p, i) {
+    return projectCard(p, i);
+  }).join('');
+}
+
+function projectCard(p, index) {
+  var exists  = true;   // assume exists; server checks async
+  var delay   = (index * 0.06).toFixed(2) + 's';
+  var relTime = formatTime(p.opened_at);
+  var typeTag = (p.language || p.type || 'project').toUpperCase();
+
+  var cardClass = 'project-card';
+
+  return (
+    '<div class="' + cardClass + '" ' +
+         'style="animation-delay:' + delay + '" ' +
+         'onclick="openRecent(\'' + esc(p.path) + '\')" ' +
+         'id="pcard-' + index + '">' +
+      '<div class="pc-header">' +
+        '<div class="pc-icon">' + projectIcon(p.icon) + '</div>' +
+        '<div>' +
+          '<div class="pc-title">' + esc(p.name) + '</div>' +
+          '<div class="pc-type">' + esc(typeTag) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pc-path" title="' + esc(p.path) + '">' + esc(p.path) + '</div>' +
+      '<div class="pc-footer">' +
+        '<span class="pc-time">' + esc(relTime) + '</span>' +
+        '<button class="pc-remove" onclick="removeRecent(event, \'' + esc(p.path) + '\')" title="Remove from list">✕</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function projectIcon(iconVal) {
+  if (!iconVal) return '📁';
+  // If it's a file path, render an <img>
+  if (iconVal.includes('/') || iconVal.includes('.png') || iconVal.includes('.svg')) {
+    return '<img src="' + esc(iconVal) + '" style="width:22px;height:22px;object-fit:contain;" />';
+  }
+  // Otherwise it's an emoji, render as text
+  return esc(iconVal);
+}
+
+function openRecent(path) {
+  if (bridge) bridge.OpenFiles ? null : null;
+  // Use the open_project slot from ProjectCreator if available
+  // or fall back to a generic open call
+  if (bridge && bridge.open_project) {
+    bridge.open_project(path);
+  } else if (bridge && bridge.OpenFiles) {
+    // Trigger directory open via WebBridge — the IDE reads the path
+    // via a dedicated slot we add below
+    bridge.open_directory(path);
+  }
+}
+
+function removeRecent(event, path) {
+  event.stopPropagation();
+  if (recents) {
+    recents.remove(path);
+    loadRecents();
+  }
+}
+
+// ─── Quick actions ────────────────────────────────────────────────────────────
+function newProject() {
+  if (bridge) bridge.start_new_project ? bridge.start_new_project() : null;
+}
+function openFolder() {
+  if (bridge) bridge.OpenFiles();
+}
+function openTerminal() {
+  if (bridge) bridge.toggle_terminal ? bridge.toggle_terminal() : null;
+}
+function openGit() {
+  if (bridge) bridge.toggle_git ? bridge.toggle_git() : null;
+}
+function openSettings() {
+  if (bridge) bridge.toggle_settings ? bridge.toggle_settings() : null;
+}
+function openThemes() {
+  if (bridge) bridge.open_theme_studio ? bridge.open_theme_studio() : null;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  try {
+    var d   = new Date(iso);
+    var now = new Date();
+    var diff = Math.floor((now - d) / 1000);
+    if (diff < 60)     return 'just now';
+    if (diff < 3600)   return Math.floor(diff/60) + ' min ago';
+    if (diff < 86400)  return Math.floor(diff/3600) + ' hr ago';
+    if (diff < 604800) return Math.floor(diff/86400) + ' day' + (Math.floor(diff/86400)===1?'':'s') + ' ago';
+    return d.toLocaleDateString();
+  } catch(e) { return iso; }
+}
+</script>
+</body>
 </html>

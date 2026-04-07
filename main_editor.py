@@ -12,7 +12,7 @@ from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 import subprocess
 from pathlib import Path
-from utils.numbers import NumberedCodeEditor, MarkdownContainer
+from utils.numbers import NumberedCodeEditor, MarkdownContainer, FindBar
 from utils.highlighter import get_highlighter, check_syntax
 from components.Terminal import TerminalManager
 from utils.tree_features import setup_tree_context_menu, toolbar_new_file
@@ -20,6 +20,8 @@ from utils.git_bridge import GitBridge
 from utils.themes import ThemeEngine
 from components.AI import AIPanel
 from components.new_project import NewProjectWidget
+from utils.recent_projects import RecentProjects
+from components.database import DatabasePanel, DBBridge
 
 
 
@@ -50,6 +52,26 @@ class WebBridge(QObject, GitBridge):
     @pyqtSlot()
     def open_theme_studio(self):
         self.mainWindow.show_themes_page()  # toggle themes page visible
+        
+    @pyqtSlot(str)
+    def open_directory(self, path):
+        self.mainWindow.update_directory(path)
+
+    @pyqtSlot()
+    def start_new_project(self):
+        self.mainWindow.start_project()
+
+    @pyqtSlot()
+    def toggle_terminal(self):
+        self.mainWindow.toggle_terminal()
+
+    @pyqtSlot()
+    def toggle_git(self):
+        self.mainWindow.github()
+
+    @pyqtSlot()
+    def toggle_settings(self):
+        self.mainWindow.settings()
 
         
 ##################### DOCS #########################
@@ -195,18 +217,20 @@ class CodeEditor(QMainWindow):
         self.theme_engine = ThemeEngine(self)
         self.themePage_visible = False
         self.Ai_visible = False
+        self.active_panel = None
         
         
         
         self.settings_visible = False
         #self.plugin_manager = PluginManager()  # Initialize plugin manager
+        self.recent_projects = RecentProjects()
         self.base_directory = None
        
         self.open_files = {}  # Dictionary to track open files
         self.modified_indicator = "● "
         self.modified_indicator_color = "#4CAF50"  # green
         self.current_file_tabs = QTabWidget()  # Create a tab widget
-        self.load_saved_theme()
+        
         self.setup_shortcuts()
         self.initUI()
 
@@ -244,6 +268,13 @@ class CodeEditor(QMainWindow):
         new_project_act.setShortcut("Ctrl+N")
         new_project_act.triggered.connect(self.start_project) # Connect to your function
         file_menu.addAction(new_project_act)
+        
+        # Add a separator
+        file_menu.addSeparator()
+        
+        open_recents = QAction("Open Recent Projects", self)
+        open_recents.triggered.connect(self.show_recent_projects)
+        file_menu.addAction(open_recents)
         
         # Add a separator
         file_menu.addSeparator()
@@ -306,6 +337,24 @@ class CodeEditor(QMainWindow):
         tree_layout.setContentsMargins(0, 0, 0, 0)
         tree_layout.setSpacing(2)
         
+        
+        #DB CONNECT LAYOUT
+        self.db_container = QWidget()
+        self.db_container.setMinimumWidth(200)
+        self.db_container.setMaximumWidth(400)
+        db_layout = QVBoxLayout(self.db_container)
+        db_layout.setContentsMargins(0,0,0,0)
+        db_layout.setSpacing(2)
+        
+        #Debug LAYOUT
+        self.debug_container = QWidget()
+        self.debug_container.setMinimumWidth(200)
+        self.debug_container.setMaximumWidth(400)
+        debug_layout = QVBoxLayout(self.debug_container)
+        debug_layout.setContentsMargins(0,0,0,0)
+        debug_layout.setSpacing(2)
+        
+        
         # Create Right sidebar for AI
         self.ai_container = QWidget()
         self.ai_container.setMinimumWidth(200)
@@ -338,7 +387,10 @@ class CodeEditor(QMainWindow):
         tree_layout.addWidget(tree_toolbar)
 
         # Set up tree view
-        self.setup_tree_view(tree_layout)
+        self.setup_sidePanel_view("tree", tree_layout)
+        self.setup_sidePanel_view("db", db_layout)
+        self.setup_sidePanel_view("debug", debug_layout)
+
         setup_tree_context_menu(self)
 
         # Create editor container
@@ -353,8 +405,12 @@ class CodeEditor(QMainWindow):
 
         # Add tree and editor to horizontal splitter
         self.main_splitter.addWidget(self.tree_container)
+        self.main_splitter.addWidget(self.db_container)
+        self.main_splitter.addWidget(self.debug_container)
         self.main_splitter.addWidget(editor_container)
         self.main_splitter.addWidget(self.ai_container)
+
+        
 
         # Create terminal container (initially hidden)
         self.terminal_container = QWidget()
@@ -392,7 +448,8 @@ class CodeEditor(QMainWindow):
         self.create_sidebar_buttons(left_sidebar_layout)
 
         # Set initial splitter sizes for horizontal splitter
-        self.main_splitter.setSizes([0, 1200, 0])
+        # Order: tree_container | db_container | debug_container | editor_container | ai_container
+        self.main_splitter.setSizes([0, 0, 0, 1200, 0])
 
         # Initialize state variables
         self.current_file = None
@@ -425,9 +482,9 @@ class CodeEditor(QMainWindow):
         buttons_data = [
             ('Toggle Tree', 'images/UI/file.png', lambda: self.toggle_tree_view()),
             #('Create Project', 'images/UI/layer-plus.png', self.start_project),
-            ('Run', 'images/UI/play2.png', self.run_code),
+            ('Run', 'images/UI/play2.png', self.open_debug),
             ('commit', 'images/UI/code-branch.png',lambda: self.github()),
-            ('run server', 'images/UI/database.png', self.run_server),
+            ('run server', 'images/UI/database.png', self.open_db),
             ('Plugins', 'images/UI/menu.png', lambda: self.plugins()),
             #('open existing project', 'images/UI/folder-open.png', self.open_file_searcher),
             ('open terminal', 'images/UI/terminal2.png', self.toggle_terminal),
@@ -470,7 +527,54 @@ class CodeEditor(QMainWindow):
         #self.tool_button.setMenu(menu)
         #layout.addWidget(self.tool_button)
 
+    def setup_sidePanel_view(self, panel_type, layout):
+        """
+        panel_type: "tree" | "db" | "debug"
+        layout: QVBoxLayout
+        """
+
+        if panel_type == "tree":
+            self.setup_tree_view(layout)
+
+        elif panel_type == "db":
+            self.setup_db_panel(layout)
+
+        elif panel_type == "debug":
+            self.setup_debug_panel(layout)
+
+    def show_panel(self, panel_name):
+        """Show exactly one side panel (tree/db/debug) and hide the others.
+        Adjusts splitter sizes so the visible panel actually takes up space.
+        Pass None to hide all side panels."""
+        self.active_panel = panel_name
+
+        show_tree  = (panel_name == "tree")
+        show_db    = (panel_name == "db")
+        show_debug = (panel_name == "debug")
+
+        self.tree_container.setVisible(show_tree)
+        self.db_container.setVisible(show_db)
+        self.debug_container.setVisible(show_debug)
+
+        # Keep tree_visible flag in sync
+        self.tree_visible = show_tree
+
+        # Splitter order: tree | db | debug | editor | ai
+        side_width   = 250 if panel_name is not None else 0
+        ai_width     = 300 if self.Ai_visible else 0
+        editor_width = max(0, 1200 - side_width - ai_width)
+
+        self.main_splitter.setSizes([
+            side_width if show_tree  else 0,
+            side_width if show_db    else 0,
+            side_width if show_debug else 0,
+            editor_width,
+            ai_width,
+        ])
+
+
     def setup_tree_view(self, layout):
+    
         # Create directory label
         self.dir_label = QLabel()
         self.dir_label.setStyleSheet("""
@@ -513,6 +617,29 @@ class CodeEditor(QMainWindow):
         # Add widgets to layout
         layout.addWidget(self.dir_label)
         layout.addWidget(self.tree)
+
+
+    def setup_db_panel(self, layout):
+        # DatabasePanel creates its own internal channel for DBBridge.
+        # self.channel (for WebBridge/ThemeEngine/etc) is set up in setup_editor_and_image.
+        self.database_panel = DatabasePanel(
+            db_layout    = layout,
+            main_window  = self,
+            channel      = None,   # panel manages its own channel
+        )
+
+    def setup_debug_panel(self, layout):
+        label = QLabel("Debug Console")
+        label.setStyleSheet("padding: 5px; font-weight: bold;")
+
+        layout.addWidget(label)
+
+        # Add debug widgets later
+
+        
+        
+    
+        
 
     def update_directory_label(self):
         """Update the directory label with placeholder or current directory"""
@@ -561,6 +688,7 @@ class CodeEditor(QMainWindow):
         self.channel = QWebChannel()
         self.channel.registerObject("WebBridge", self.bridge)
         self.channel.registerObject("ThemeEngine", self.theme_engine)
+        self.channel.registerObject("RecentProjects", self.recent_projects)
 
         ## landing page
         self.landing_page = QWebEngineView()
@@ -598,6 +726,11 @@ class CodeEditor(QMainWindow):
         layout.addWidget(self.new_project_page)
         self.new_project_page.setVisible(False)
         
+        # database_view is owned by DatabasePanel (self.database_panel.database_view).
+        # We just need a local reference so the layout addWidget call below works.
+        # DatabasePanel is set up in setup_db_panel(), called earlier in initUI.
+        
+        
         
         # AI channel
         from components.AI import AIPanel
@@ -629,8 +762,12 @@ class CodeEditor(QMainWindow):
         layout.addWidget(self.themes_page)
         layout.addWidget(self.current_file_tabs)
         layout.addWidget(self.new_project_page)
+        layout.addWidget(self.database_panel.database_view)
 
-        
+        self.find_bar = FindBar(self.current_file_tabs)
+        layout.addWidget(self.find_bar)
+        self.find_bar.setVisible(False)
+                
         self.editor.setVisible(False)
         self.current_file_tabs.setVisible(False)
         self.image_label.setVisible(False)
@@ -638,7 +775,8 @@ class CodeEditor(QMainWindow):
         self.gitHandler.setVisible(False)
         self.settings_page.setVisible(False)
         self.themes_page.setVisible(False)
-        self.new_project_page.setVisible(False)        
+        self.new_project_page.setVisible(False)     
+        self.database_panel.database_view.setVisible(False)   
 
 
     
@@ -650,18 +788,29 @@ class CodeEditor(QMainWindow):
         return button
 
     def toggle_tree_view(self, flag=None):
-        if flag is None or isinstance(flag, bool):
-            self.tree_visible = not self.tree_visible
-        else:
+        if flag is not None and isinstance(flag, bool):
             self.tree_visible = flag
-
-        self.tree_container.setVisible(self.tree_visible)
-        ai_width = 300 if self.Ai_visible else 0
+        else:
+            self.tree_visible = not (self.active_panel == "tree")
 
         if self.tree_visible:
-            self.main_splitter.setSizes([250, 950 - ai_width, ai_width])
+            self.show_panel("tree")
         else:
-            self.main_splitter.setSizes([0, 1200 - ai_width, ai_width])
+            self.show_panel(None)
+            
+    def open_db(self):
+        if self.active_panel == "db":
+            self.show_panel(None)            
+        else:
+            self.show_panel("db")
+            self._hide_all_panels() 
+            self.database_panel.database_view.setVisible(True) 
+
+    def open_debug(self):
+        if self.active_panel == "debug":
+            self.show_panel(None)
+        else:
+            self.show_panel("debug")
 
     def apply_dark_theme(self):
         self.setStyleSheet("""
@@ -828,10 +977,9 @@ class CodeEditor(QMainWindow):
             # Handle images
             if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.gif', '.ico')):
                 if path not in self.open_files:
-                    self.image_label.setVisible(False)
-                    self.landing_page.setVisible(False)
+                    self._hide_all_panels()
                     self.current_file_tabs.setVisible(True)
-                    self.plugin_page.setVisible(False)
+                    
                     
                     image_label = QLabel()
                     pixmap = QPixmap(path)
@@ -868,16 +1016,19 @@ class CodeEditor(QMainWindow):
                     self.current_file_tabs.setCurrentIndex(tab_index)
                 return
 
-            # Handle unsupported files
-            if path.lower().endswith(('.exe', '.dll', '.cfg', '.ps1', '.db', '.sqlite')):
-                QMessageBox.warning(self, "Cannot Open File", "This file type cannot be opened in the editor.")
+            # Handle database files → open in DB panel
+            if path.lower().endswith(('.db', '.sqlite', '.sqlite3', '.sql')):
+                if hasattr(self, 'database_panel'):
+                    self.show_panel("db")
+                    self._hide_all_panels() 
+                    self.database_panel.open_db_file(path)
+                else:
+                    QMessageBox.information(self, "Database", "Open the Database panel first.")
                 return
 
             # Handle text files
             try:
-                self.image_label.setVisible(False)
-                self.landing_page.setVisible(False)
-                self.plugin_page.setVisible(False)
+                self._hide_all_panels() 
                 self.current_file_tabs.setVisible(True)
  
                 if path not in self.open_files:
@@ -1099,6 +1250,10 @@ class CodeEditor(QMainWindow):
         find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         find_shortcut.activated.connect(self.show_find_replace_dialog)
         
+        # Replace - Ctrl+H
+        find_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
+        find_shortcut.activated.connect(self.show_replace_dialog)
+        
         # Undo - Ctrl+Z
         undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
         undo_shortcut.activated.connect(self.undo_action)
@@ -1124,138 +1279,12 @@ class CodeEditor(QMainWindow):
         delete_shortcut.activated.connect(self.delete_file)
 
     def show_find_replace_dialog(self):
-        """Show find and replace dialog for the current tab"""
-        current_tab_index = self.current_file_tabs.currentIndex()  # Get current tab index
-
-        if current_tab_index == -1:  # No open tab
-            QMessageBox.warning(self, "Error", "No file is currently open.")
-            return
-
-        # Get the editor widget for the current tab
-        current_tab = self.current_file_tabs.widget(current_tab_index)
-
-        # Check if the current tab is a text editor
-        if not isinstance(current_tab, (QTextEdit, NumberedCodeEditor)):  
-            QMessageBox.warning(self, "Error", "Find/Replace only works in text files.")
-            return
-
-        from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout, QCheckBox
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Find and Replace")
-        dialog.setModal(True)
-
-        layout = QVBoxLayout()
-
-        # Find section
-        find_layout = QHBoxLayout()
-        find_label = QLabel("Find:")
-        self.find_input = QLineEdit()
-        find_layout.addWidget(find_label)
-        find_layout.addWidget(self.find_input)
-
-        # Replace section
-        replace_layout = QHBoxLayout()
-        replace_label = QLabel("Replace:")
-        self.replace_input = QLineEdit()
-        replace_layout.addWidget(replace_label)
-        replace_layout.addWidget(self.replace_input)
-
-        # Options
-        options_layout = QHBoxLayout()
-        self.case_sensitive = QCheckBox("Case sensitive")
-        self.whole_words = QCheckBox("Whole words only")
-        options_layout.addWidget(self.case_sensitive)
-        options_layout.addWidget(self.whole_words)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        find_button = QPushButton("Find Next")
-        replace_button = QPushButton("Replace")
-        replace_all_button = QPushButton("Replace All")
-
-        find_button.clicked.connect(lambda: self.find_text(current_tab))
-        replace_button.clicked.connect(lambda: self.replace_text(current_tab))
-        replace_all_button.clicked.connect(lambda: self.replace_all_text(current_tab))
-
-        button_layout.addWidget(find_button)
-        button_layout.addWidget(replace_button)
-        button_layout.addWidget(replace_all_button)
-
-        # Add all layouts to main layout
-        layout.addLayout(find_layout)
-        layout.addLayout(replace_layout)
-        layout.addLayout(options_layout)
-        layout.addLayout(button_layout)
-
-        dialog.setLayout(layout)
-        dialog.exec_()  # Use exec_() instead of show() for a proper modal dialog
-
-
-    def find_text(self, current_tab):
-        """Find next occurrence of text"""
-        current_tab = self.current_file_tabs.currentWidget()
-        if not isinstance(current_tab, (QTextEdit, NumberedCodeEditor)):
-            return
-            
-        find_text = self.find_input.text()
-        if not find_text:
-            return
-            
-        # Get flags based on options
-        flags = QTextDocument.FindFlags()
-        if self.case_sensitive.isChecked():
-            flags |= QTextDocument.FindCaseSensitively
-        if self.whole_words.isChecked():
-            flags |= QTextDocument.FindWholeWords
-        
-        # Try to find the text
-        if not current_tab.find(find_text, flags):
-            # If not found, wrap around to the beginning
-            cursor = current_tab.textCursor()
-            cursor.movePosition(QTextCursor.Start)
-            current_tab.setTextCursor(cursor)
-            if not current_tab.find(find_text, flags):
-                QMessageBox.information(self, "Find", "No more occurrences found.")
-
-    def replace_text(self, current_tab):
-        """Replace current occurrence of text"""
-        current_tab = self.current_file_tabs.currentWidget()
-        if not isinstance(current_tab, (QTextEdit, NumberedCodeEditor)):
-            return
-            
-        cursor = current_tab.textCursor()
-        if cursor.hasSelection() and cursor.selectedText() == self.find_input.text():
-            cursor.insertText(self.replace_input.text())
-        
-        # Find next occurrence
-        self.find_text(current_tab)
-
-    def replace_all_text(self, current_tab):
-        """Replace all occurrences of text"""
-        current_tab = self.current_file_tabs.currentWidget()
-        if not isinstance(current_tab, (QTextEdit, NumberedCodeEditor)):
-            return
-            
-        find_text = self.find_input.text()
-        replace_text = self.replace_input.text()
-        
-        cursor = current_tab.textCursor()
-        cursor.beginEditBlock()  # Start batch edit
-        
-        # Move to start of document
-        cursor.movePosition(QTextCursor.Start)
-        current_tab.setTextCursor(cursor)
-        
-        count = 0
-        while current_tab.find(find_text):
-            cursor = current_tab.textCursor()
-            cursor.insertText(replace_text)
-            count += 1
-        
-        cursor.endEditBlock()  # End batch edit
-        
-        QMessageBox.information(self, "Replace All", f"Replaced {count} occurrences.")
+        """Show the inline find bar (Ctrl+F)."""
+        self.find_bar.show_find()
+ 
+    def show_replace_dialog(self):
+        """Show the inline find bar in replace mode (Ctrl+H)."""
+        self.find_bar.show_replace()
 
     def undo_action(self):
         """Undo last action in current text editor"""
@@ -1384,14 +1413,8 @@ class CodeEditor(QMainWindow):
 
         if self.plugins_visible:
             # SHOW plugins page
+            self._hide_all_panels() 
             self.plugin_page.setVisible(True)
-            self.landing_page.setVisible(False)
-            self.current_file_tabs.setVisible(False)
-            self.editor.setVisible(False)
-            self.image_label.setVisible(False)
-            self.settings_page.setVisible(False)
-            self.gitHandler.setVisible(False)
-            self.themes_page.setVisible(False)
 
         else:
             # HIDE plugins page
@@ -1437,14 +1460,8 @@ class CodeEditor(QMainWindow):
 
         if self.settings_visible:
             # SHOW settings page
+            self._hide_all_panels() 
             self.settings_page.setVisible(True)
-            self.landing_page.setVisible(False)
-            self.current_file_tabs.setVisible(False)
-            self.editor.setVisible(False)
-            self.image_label.setVisible(False)
-            self.gitHandler.setVisible(False)
-            self.plugin_page.setVisible(False)
-            self.themes_page.setVisible(False)
 
         else:
             # HIDE settings page
@@ -1481,11 +1498,21 @@ class CodeEditor(QMainWindow):
     def apply_theme(self, theme_name):
         pass
 
-    def load_saved_theme(self):
-        pass
+    def _hide_all_panels(self):
+        """Hide every content panel. Call before showing any single panel."""
+        for widget in [
+            self.editor, self.current_file_tabs, self.image_label,
+            self.landing_page, self.plugin_page, self.gitHandler,
+            self.settings_page, self.themes_page, self.new_project_page, self.database_panel.database_view
+        ]:
+            widget.setVisible(False)
             
-    def update_server_settings(self, server_settings):
-       pass
+    def show_recent_projects(self):
+        """Show the landing page and tell it to highlight the recents section."""
+        self._hide_all_panels()
+        self.landing_page.setVisible(True)
+        # Tell the JS to scroll recents into view and refresh the list
+        self.landing_page.page().runJavaScript("loadRecents(); document.getElementById('recentGrid').scrollIntoView({behavior:'smooth'});")
 
     
 
@@ -1493,15 +1520,8 @@ class CodeEditor(QMainWindow):
         self.new_project_visible = not getattr(self, 'new_project_visible', False)
 
         if self.new_project_visible:
+            self._hide_all_panels() 
             self.new_project_page.setVisible(True)
-            self.landing_page.setVisible(False)
-            self.current_file_tabs.setVisible(False)
-            self.editor.setVisible(False)
-            self.image_label.setVisible(False)
-            self.gitHandler.setVisible(False)
-            self.plugin_page.setVisible(False)
-            self.settings_page.setVisible(False)
-            self.themes_page.setVisible(False)
         else:
             self.new_project_page.setVisible(False)
 
@@ -1519,42 +1539,25 @@ class CodeEditor(QMainWindow):
 
         if self.github_visible:
             # paint latest state
-            self.bridge.git_refresh()
+            self._hide_all_panels()
+            self.bridge.git_refresh()            
             # SHOW github page
             self.gitHandler.setVisible(True)
-            self.plugin_page.setVisible(False)
-            self.landing_page.setVisible(False)
-            self.current_file_tabs.setVisible(False)
-            self.editor.setVisible(False)
-            self.image_label.setVisible(False)
-            self.settings_page.setVisible(False)
-            self.themes_page.setVisible(False)
-
         else:
-            # HIDE plugins page
             self.gitHandler.setVisible(False)
 
             if self.current_file_tabs.count() == 0:
-                # No tabs → show landing
                 self.landing_page.setVisible(True)
                 self.current_file_tabs.setVisible(False)
             else:
-                # Tabs exist → show tabs
                 self.current_file_tabs.setVisible(True)
                 self.landing_page.setVisible(False)
-
-        pass
+           
         
            
     def show_themes_page(self):
+        self._hide_all_panels()
         self.themes_page.setVisible(True)
-        self.landing_page.setVisible(False)
-        self.current_file_tabs.setVisible(False)
-        self.editor.setVisible(False)
-        self.image_label.setVisible(False)
-        self.gitHandler.setVisible(False)
-        self.plugin_page.setVisible(False)
-        self.settings_page.setVisible(False)
     
 
 
@@ -1604,6 +1607,7 @@ class CodeEditor(QMainWindow):
                 self.ai_panel.set_project_root(path_string)
                 self.new_project_visible = False
                 self.new_project_page.setVisible(False)
+                self.recent_projects.record(path_string)
         else:
             print(f"Invalid directory: {new_directory}")  # Debug print
             QMessageBox.warning(self, 'Error', f'Invalid directory: {new_directory}')
@@ -1616,11 +1620,21 @@ class CodeEditor(QMainWindow):
         
         self.ai_container.setVisible(self.Ai_visible)
         
-        tree_width = 250 if self.tree_visible else 0
-        ai_width   = 300 if self.Ai_visible  else 0
-        mid_width  = 1200 - tree_width - ai_width
-        
-        self.main_splitter.setSizes([tree_width, mid_width, ai_width])
+        side_width   = 250 if self.active_panel is not None else 0
+        ai_width     = 300 if self.Ai_visible else 0
+        editor_width = max(0, 1200 - side_width - ai_width)
+
+        show_tree  = (self.active_panel == "tree")
+        show_db    = (self.active_panel == "db")
+        show_debug = (self.active_panel == "debug")
+
+        self.main_splitter.setSizes([
+            side_width if show_tree  else 0,
+            side_width if show_db    else 0,
+            side_width if show_debug else 0,
+            editor_width,
+            ai_width,
+        ])
         self.ai_panel.set_project_root(self.base_directory)
             
             
@@ -1636,6 +1650,3 @@ if __name__ == '__main__':
     editor = CodeEditor()
     editor.show()
     sys.exit(app.exec_())
-    
-    
-

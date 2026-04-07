@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Database Panel</title>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg0:      #11111b;
+    --bg1:      #1e1e2e;
+    --bg2:      #181825;
+    --bg3:      #313244;
+    --bg4:      #45475a;
+    --text:     #cdd6f4;
+    --subtext:  #a6adc8;
+    --muted:    #6c7086;
+    --blue:     #89b4fa;
+    --lavender: #b4befe;
+    --green:    #a6e3a1;
+    --red:      #f38ba8;
+    --yellow:   #f9e2af;
+    --teal:     #94e2d5;
+    --peach:    #fab387;
+    --mauve:    #cba6f7;
+    --border:   #313244;
+    --radius:   10px;
+    --font:     'DM Sans', sans-serif;
+    --mono:     'JetBrains Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg1);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Home screen ─────────────────────────────────────────────────────────── */
+  #home-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 20px;
+    animation: fadeIn .3s ease;
+  }
+  #home-screen .db-logo {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, var(--blue), var(--mauve));
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px;
+  }
+  #home-screen h2 { font-size: 20px; font-weight: 600; color: var(--text); }
+  #home-screen p  { font-size: 13px; color: var(--muted); text-align: center; max-width: 280px; line-height: 1.6; }
+
+  .pill-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--bg3); color: var(--text);
+    border: 1px solid var(--border); border-radius: 50px;
+    padding: 8px 18px; font-size: 13px; font-family: var(--font);
+    cursor: pointer; transition: all .2s;
+  }
+  .pill-btn:hover { background: var(--bg4); border-color: var(--blue); color: var(--blue); }
+  .pill-btn.primary { background: var(--blue); color: var(--bg0); border-color: transparent; font-weight: 600; }
+  .pill-btn.primary:hover { background: var(--lavender); }
+
+  /* ── Connection detail ───────────────────────────────────────────────────── */
+  #conn-screen {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    animation: fadeIn .25s ease;
+  }
+
+  /* Topbar */
+  .conn-topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .db-type-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg3); border-radius: 8px;
+    padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--blue);
+  }
+  .conn-name { font-size: 15px; font-weight: 600; flex: 1; }
+  .status-badge {
+    font-size: 11px; font-weight: 500;
+    padding: 3px 10px; border-radius: 50px;
+    letter-spacing: .5px;
+  }
+  .status-badge.connected    { background:#1c3a1c; color: var(--green); }
+  .status-badge.disconnected { background:#2a2a3e; color: var(--muted); }
+  .status-badge.error        { background:#3a1c1c; color: var(--red); }
+
+  /* Action toolbar */
+  .action-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--bg3); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 5px 12px; font-size: 12px; font-family: var(--font);
+    cursor: pointer; transition: all .18s; white-space: nowrap;
+  }
+  .action-btn:hover { background: var(--bg4); border-color: var(--blue); color: var(--blue); }
+  .action-btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .action-btn.success:hover { border-color: var(--green); color: var(--green); }
+  .sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex; gap: 0;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    padding: 0 14px;
+  }
+  .tab {
+    padding: 8px 16px; font-size: 12px; font-weight: 500; color: var(--muted);
+    cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all .18s; white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+  /* Tab content areas */
+  .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* ── Schema tab ──────────────────────────────────────────────────────────── */
+  #tab-schema {
+    overflow-y: auto;
+    padding: 14px;
+    gap: 8px;
+    flex-direction: column;
+  }
+  .schema-table-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    cursor: pointer; transition: all .18s;
+  }
+  .schema-table-item:hover { border-color: var(--blue); background: var(--bg3); }
+  .schema-table-item .tbl-icon {
+    font-size: 16px; width: 28px; text-align: center;
+  }
+  .schema-table-item .tbl-name { font-size: 13px; font-weight: 500; }
+  .schema-table-item .tbl-meta { font-size: 11px; color: var(--muted); margin-left: auto; }
+  .schema-empty { color: var(--muted); font-size: 13px; text-align: center; margin-top: 30px; }
+
+  /* ── Query tab ───────────────────────────────────────────────────────────── */
+  #tab-query { flex-direction: column; }
+  .query-editor-wrap {
+    padding: 14px 14px 0;
+    flex-shrink: 0;
+  }
+  .query-editor {
+    width: 100%; height: 130px;
+    background: var(--bg0); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-family: var(--mono); font-size: 12px;
+    resize: vertical; outline: none; transition: border-color .2s;
+    line-height: 1.6;
+  }
+  .query-editor:focus { border-color: var(--blue); }
+  .query-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .run-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--blue); color: var(--bg0);
+    border: none; border-radius: 7px;
+    padding: 7px 16px; font-size: 13px; font-weight: 600; font-family: var(--font);
+    cursor: pointer; transition: background .18s;
+  }
+  .run-btn:hover { background: var(--lavender); }
+  .run-status { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* Results table */
+  .results-wrap {
+    flex: 1; overflow: auto; padding: 14px;
+  }
+  .results-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    font-family: var(--mono);
+  }
+  .results-table th {
+    background: var(--bg3); color: var(--blue);
+    padding: 8px 12px; text-align: left;
+    border-bottom: 2px solid var(--border);
+    position: sticky; top: 0; z-index: 1;
+    white-space: nowrap; font-weight: 600;
+  }
+  .results-table td {
+    padding: 6px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text); white-space: nowrap; max-width: 240px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .results-table tr:hover td { background: var(--bg3); }
+  .results-error {
+    background: #3a1c1c; color: var(--red);
+    border: 1px solid #5a2c2c; border-radius: 8px;
+    padding: 14px; font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  }
+  .results-info {
+    color: var(--muted); font-size: 12px; padding: 10px 0;
+  }
+
+  /* ── Info tab ────────────────────────────────────────────────────────────── */
+  #tab-info {
+    padding: 16px; gap: 10px; flex-direction: column; overflow-y: auto;
+  }
+  .info-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .info-card h4 {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .key   { color: var(--muted); }
+  .info-row .value { color: var(--text); font-family: var(--mono); font-size: 12px; word-break: break-all; text-align: right; max-width: 60%; }
+
+  /* ── Firestore tab ───────────────────────────────────────────────────────── */
+  #tab-firestore {
+    padding: 16px; flex-direction: column; gap: 12px; overflow-y: auto;
+  }
+  .firestore-notice {
+    background: linear-gradient(135deg, #1a1a35, #1a2535);
+    border: 1px solid #3a3a5a; border-radius: 10px;
+    padding: 20px; text-align: center;
+  }
+  .firestore-notice .fs-icon { font-size: 36px; margin-bottom: 10px; }
+  .firestore-notice h3 { font-size: 16px; font-weight: 600; color: var(--blue); margin-bottom: 6px; }
+  .firestore-notice p  { font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .ref-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .ref-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; cursor: pointer; transition: all .18s;
+  }
+  .ref-card:hover { border-color: var(--blue); background: var(--bg3); }
+  .ref-card .rc-icon { font-size: 22px; margin-bottom: 8px; }
+  .ref-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .ref-card p  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ── SQL file editor ─────────────────────────────────────────────────────── */
+  #sql-file-screen {
+    display: none; flex-direction: column; height: 100%; animation: fadeIn .25s ease;
+  }
+  .file-topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: var(--bg2);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .file-name { font-family: var(--mono); font-size: 13px; color: var(--blue); flex: 1; }
+  .sql-file-editor {
+    flex: 1; background: var(--bg0); color: var(--text);
+    border: none; outline: none; resize: none;
+    padding: 16px; font-family: var(--mono); font-size: 13px; line-height: 1.7;
+  }
+  .file-statusbar {
+    padding: 4px 14px; background: var(--bg2); border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--muted); font-family: var(--mono); flex-shrink: 0;
+  }
+
+  /* ── Scrollbars ──────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+
+  /* ── Animations ──────────────────────────────────────────────────────────── */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin    { to { transform: rotate(360deg); } }
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+</style>
+</head>
+<body>
+
+<!-- ── HOME ─────────────────────────────────────────────────────────────────── -->
+<div id="home-screen">
+  <div class="db-logo">🗄</div>
+  <h2>Database Explorer</h2>
+  <p>Select a connection from the sidebar, or add a new one to get started.</p>
+  <button class="pill-btn primary" onclick="bridgeCall('add')">＋ New Connection</button>
+</div>
+
+<!-- ── CONNECTION DETAIL ────────────────────────────────────────────────────── -->
+<div id="conn-screen">
+
+  <!-- Top bar -->
+  <div class="conn-topbar">
+    <div class="db-type-badge">
+      <span id="conn-type-icon">🗄</span>
+      <span id="conn-type-label">SQLite</span>
+    </div>
+    <span class="conn-name" id="conn-name">—</span>
+    <span class="status-badge disconnected" id="status-badge">DISCONNECTED</span>
+  </div>
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <button class="action-btn success" id="btn-connect"    onclick="actionConnect()">▶ Connect</button>
+    <button class="action-btn"         id="btn-disconnect" onclick="actionDisconnect()" style="display:none">⏹ Disconnect</button>
+    <button class="action-btn"                             onclick="actionRefreshSchema()">↺ Refresh Schema</button>
+    <div class="sep"></div>
+    <button class="action-btn"                             onclick="actionExport()">⬆ Export</button>
+    <div class="sep"></div>
+    <button class="action-btn danger"                      onclick="actionDelete()">🗑 Delete</button>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <div class="tab active" data-tab="schema"    onclick="switchTab('schema')">Schema</div>
+    <div class="tab"        data-tab="query"     onclick="switchTab('query')">Query Editor</div>
+    <div class="tab"        data-tab="info"      onclick="switchTab('info')">Connection Info</div>
+    <div class="tab" id="firestore-tab" data-tab="firestore" onclick="switchTab('firestore')" style="display:none">Firestore</div>
+  </div>
+
+  <!-- Schema -->
+  <div class="tab-content active" id="tab-schema">
+    <div class="schema-empty" id="schema-placeholder">
+      Connect to load schema &amp; tables.
+    </div>
+    <div id="schema-list" style="display:none; flex-direction:column; gap:8px; padding:14px;"></div>
+  </div>
+
+  <!-- Query Editor -->
+  <div class="tab-content" id="tab-query">
+    <div class="query-editor-wrap">
+      <textarea class="query-editor" id="query-input" placeholder="SELECT * FROM my_table LIMIT 100;
+
+-- Tip: highlight a portion to run only that section"></textarea>
+    </div>
+    <div class="query-toolbar">
+      <button class="run-btn" onclick="runQuery()">▶ Run Query</button>
+      <button class="action-btn" onclick="clearQuery()">✕ Clear</button>
+      <button class="action-btn" onclick="formatQuery()">✦ Format</button>
+      <span class="run-status" id="run-status"></span>
+    </div>
+    <div class="results-wrap" id="results-wrap">
+      <div class="results-info">Results will appear here after running a query.</div>
+    </div>
+  </div>
+
+  <!-- Connection Info -->
+  <div class="tab-content" id="tab-info">
+    <div class="info-card">
+      <h4>Connection Details</h4>
+      <div id="info-rows"></div>
+    </div>
+  </div>
+
+  <!-- Firestore tab -->
+  <div class="tab-content" id="tab-firestore">
+    <div class="firestore-notice">
+      <div class="fs-icon">🔥</div>
+      <h3>Firestore Integration</h3>
+      <p>
+        This panel lets you reference and coordinate your Firestore implementation.<br/>
+        Use the cards below to manage collections, browse documents,
+        and cross-reference your code.
+      </p>
+    </div>
+    <div class="ref-grid">
+      <div class="ref-card">
+        <div class="rc-icon">📁</div>
+        <h4>Browse Collections</h4>
+        <p>View top-level collections and navigate the document tree.</p>
+      </div>
+      <div class="ref-card">
+        <div class="rc-icon">🔍</div>
+        <h4>Query Builder</h4>
+        <p>Construct Firestore queries visually without writing SDK code.</p>
+      </div>
+      <div class="ref-card">
+        <div class="rc-icon">📋</div>
+        <h4>Schema Reference</h4>
+        <p>Map your collections to your app's data models and types.</p>
+      </div>
+      <div class="ref-card">
+        <div class="rc-icon">⚙</div>
+        <h4>Rules Editor</h4>
+        <p>Draft and review Firestore security rules in-context.</p>
+      </div>
+      <div class="ref-card">
+        <div class="rc-icon">📤</div>
+        <h4>Import / Export</h4>
+        <p>Export collections as JSON or import documents from files.</p>
+      </div>
+      <div class="ref-card">
+        <div class="rc-icon">🔗</div>
+        <h4>Code References</h4>
+        <p>See where collections are referenced across your project files.</p>
+      </div>
+    </div>
+    <div class="info-card">
+      <h4>Setup Note</h4>
+      <div class="info-row">
+        <span class="key">SDK</span>
+        <span class="value">firebase-admin</span>
+      </div>
+      <div class="info-row">
+        <span class="key">Install</span>
+        <span class="value">pip install firebase-admin</span>
+      </div>
+      <div class="info-row">
+        <span class="key">Credentials</span>
+        <span class="value">Service Account JSON (set in connection)</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /conn-screen -->
+
+<!-- ── SQL FILE EDITOR ───────────────────────────────────────────────────────── -->
+<div id="sql-file-screen">
+  <div class="file-topbar">
+    <span style="color:var(--muted); font-size:13px;">📄</span>
+    <span class="file-name" id="sql-file-name">query.sql</span>
+    <button class="action-btn success" onclick="saveSQLFile()">💾 Save</button>
+    <button class="action-btn" id="btn-run-file" onclick="runSQLFile()">▶ Run against…</button>
+    <button class="action-btn" onclick="showHome()">✕ Close</button>
+  </div>
+  <textarea class="sql-file-editor" id="sql-file-editor" spellcheck="false"></textarea>
+  <div class="file-statusbar" id="sql-file-status">Ready</div>
+</div>
+
+<script>
+// ── Bridge setup ─────────────────────────────────────────────────────────────
+var DBBridge = null;
+var _currentConn = null;
+var _currentFile = null;
+
+new QWebChannel(qt.webChannelTransport, function(channel) {
+  DBBridge = channel.objects.DBBridge;
+});
+
+function bridgeCall(action, ...args) {
+  if (!DBBridge) { console.warn("Bridge not ready"); return; }
+  if      (action === 'connect')          DBBridge.connect_db(args[0]);
+  else if (action === 'disconnect')       DBBridge.disconnect_db(args[0]);
+  else if (action === 'runQuery')         DBBridge.run_query(args[0], args[1]);
+  else if (action === 'export')           DBBridge.export_db(args[0]);
+  else if (action === 'delete')           DBBridge.delete_connection(args[0]);
+  else if (action === 'refreshSchema')    DBBridge.refresh_schema(args[0]);
+}
+
+// ── Screen management ─────────────────────────────────────────────────────────
+function showHome() {
+  document.getElementById('home-screen').style.display = 'flex';
+  document.getElementById('conn-screen').style.display = 'none';
+  document.getElementById('sql-file-screen').style.display = 'none';
+  _currentConn = null;
+  _currentFile = null;
+}
+
+window.showHome = showHome;
+
+window.showConnection = function(conn) {
+  _currentConn = conn;
+  document.getElementById('home-screen').style.display = 'none';
+  document.getElementById('sql-file-screen').style.display = 'none';
+  document.getElementById('conn-screen').style.display = 'flex';
+
+  // Populate topbar
+  document.getElementById('conn-name').textContent = conn.name || '—';
+  document.getElementById('conn-type-label').textContent = conn.db_type || '';
+  document.getElementById('conn-type-icon').textContent = dbTypeIcon(conn.db_type);
+
+  // Status
+  updateStatusBadge(conn.status || 'disconnected');
+
+  // Show/hide firestore tab
+  var fsTab = document.getElementById('firestore-tab');
+  fsTab.style.display = (conn.db_type === 'Firestore') ? 'block' : 'none';
+
+  // Populate info tab
+  populateInfo(conn);
+
+  // Switch to schema by default
+  switchTab('schema');
+};
+
+window.openSQLFile = function(payload) {
+  _currentFile = payload;
+  document.getElementById('home-screen').style.display = 'none';
+  document.getElementById('conn-screen').style.display = 'none';
+  document.getElementById('sql-file-screen').style.display = 'flex';
+  document.getElementById('sql-file-name').textContent = payload.file.split('/').pop();
+  document.getElementById('sql-file-editor').value = payload.content || '';
+  document.getElementById('sql-file-status').textContent = 'Loaded: ' + payload.file;
+};
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+function updateStatusBadge(status) {
+  var badge = document.getElementById('status-badge');
+  badge.textContent = status.toUpperCase();
+  badge.className = 'status-badge ' + status;
+
+  var btnConnect    = document.getElementById('btn-connect');
+  var btnDisconnect = document.getElementById('btn-disconnect');
+  if (status === 'connected') {
+    btnConnect.style.display = 'none';
+    btnDisconnect.style.display = 'inline-flex';
+  } else {
+    btnConnect.style.display = 'inline-flex';
+    btnDisconnect.style.display = 'none';
+  }
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function actionConnect() {
+  if (!_currentConn) return;
+  document.getElementById('status-badge').textContent = 'CONNECTING…';
+  bridgeCall('connect', _currentConn.id);
+}
+function actionDisconnect() {
+  if (!_currentConn) return;
+  bridgeCall('disconnect', _currentConn.id);
+  updateStatusBadge('disconnected');
+}
+function actionRefreshSchema() {
+  if (!_currentConn) return;
+  document.getElementById('schema-placeholder').textContent = '⟳ Loading schema…';
+  document.getElementById('schema-placeholder').style.display = 'block';
+  document.getElementById('schema-list').style.display = 'none';
+  bridgeCall('refreshSchema', _currentConn.id);
+}
+function actionExport() {
+  if (!_currentConn) return;
+  bridgeCall('export', _currentConn.id);
+}
+function actionDelete() {
+  if (!_currentConn) return;
+  if (confirm('Delete connection "' + _currentConn.name + '"?')) {
+    bridgeCall('delete', _currentConn.id);
+    showHome();
+  }
+}
+
+// ── Python → JS callbacks ────────────────────────────────────────────────────
+window.onConnectionStatus = function(payload) {
+  if (!_currentConn || _currentConn.id !== payload.id) return;
+  _currentConn.status = payload.status;
+  updateStatusBadge(payload.status);
+  if (payload.error) {
+    showResultError(payload.error);
+    switchTab('query');
+  } else if (payload.status === 'connected') {
+    actionRefreshSchema();
+  }
+};
+
+window.onSchemaResults = function(schema) {
+  var list = document.getElementById('schema-list');
+  var placeholder = document.getElementById('schema-placeholder');
+  list.innerHTML = '';
+
+  if (schema.error) {
+    placeholder.textContent = '⚠ ' + schema.error;
+    placeholder.style.display = 'block';
+    list.style.display = 'none';
+    return;
+  }
+
+  if (!schema.tables || schema.tables.length === 0) {
+    placeholder.textContent = 'No tables found.';
+    placeholder.style.display = 'block';
+    list.style.display = 'none';
+    return;
+  }
+
+  placeholder.style.display = 'none';
+  list.style.display = 'flex';
+
+  schema.tables.forEach(function(tbl) {
+    var div = document.createElement('div');
+    div.className = 'schema-table-item';
+    div.innerHTML = '<span class="tbl-icon">▤</span>'
+      + '<span class="tbl-name">' + tbl + '</span>'
+      + '<span class="tbl-meta">table</span>';
+    div.onclick = function() {
+      // Use appropriate quoting based on database type
+      var quotedTable = quoteIdentifier(tbl, _currentConn.db_type);
+      document.getElementById('query-input').value = 'SELECT * FROM ' + quotedTable + ' LIMIT 100;';
+      switchTab('query');
+    };
+    list.appendChild(div);
+  });
+};
+
+window.onQueryResults = function(results) {
+  var wrap = document.getElementById('results-wrap');
+  var statusEl = document.getElementById('run-status');
+
+  if (results.error) {
+    showResultError(results.error);
+    statusEl.textContent = 'Error';
+    return;
+  }
+
+  if (!results.columns || results.columns.length === 0) {
+    wrap.innerHTML = '<div class="results-info">Query executed. ' + results.rowcount + ' row(s) affected.</div>';
+    statusEl.textContent = results.rowcount + ' rows affected';
+    return;
+  }
+
+  statusEl.textContent = results.rows.length + ' rows';
+
+  var html = '<table class="results-table"><thead><tr>';
+  results.columns.forEach(function(col) {
+    html += '<th>' + escapeHtml(col) + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+  results.rows.forEach(function(row) {
+    html += '<tr>';
+    row.forEach(function(cell) {
+      var val = cell === null ? '<span style="color:var(--muted)">NULL</span>' : escapeHtml(String(cell));
+      html += '<td title="' + escapeHtml(String(cell ?? '')) + '">' + val + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+};
+
+// ── Query editor ──────────────────────────────────────────────────────────────
+function runQuery() {
+  if (!_currentConn) {
+    showResultError('No connection selected. Connect first.');
+    return;
+  }
+  var query = getSelectedOrAll();
+  if (!query.trim()) { return; }
+  document.getElementById('run-status').innerHTML = '<span class="spin">⟳</span> Running…';
+  bridgeCall('runQuery', _currentConn.id, query);
+}
+function clearQuery() {
+  document.getElementById('query-input').value = '';
+  document.getElementById('results-wrap').innerHTML = '<div class="results-info">Results will appear here after running a query.</div>';
+  document.getElementById('run-status').textContent = '';
+}
+function formatQuery() {
+  // Basic formatting: uppercase keywords
+  var el = document.getElementById('query-input');
+  var keywords = ['SELECT','FROM','WHERE','JOIN','LEFT','RIGHT','INNER','OUTER',
+    'ON','GROUP BY','ORDER BY','HAVING','INSERT','UPDATE','DELETE','CREATE',
+    'DROP','ALTER','TABLE','INTO','VALUES','SET','LIMIT','OFFSET','AS','AND','OR'];
+  var sql = el.value;
+  keywords.forEach(function(kw) {
+    sql = sql.replace(new RegExp('\\b' + kw + '\\b', 'gi'), kw);
+  });
+  el.value = sql;
+}
+function getSelectedOrAll() {
+  var el = document.getElementById('query-input');
+  var start = el.selectionStart, end = el.selectionEnd;
+  return (start !== end) ? el.value.substring(start, end) : el.value;
+}
+
+// ── SQL file ──────────────────────────────────────────────────────────────────
+function saveSQLFile() {
+  if (!_currentFile) return;
+  var content = document.getElementById('sql-file-editor').value;
+  document.getElementById('sql-file-status').textContent = 'Saved (use Ctrl+S in the IDE to write disk)';
+}
+function runSQLFile() {
+  document.getElementById('sql-file-status').textContent = 'Select a connection first from the sidebar, then use Query Editor.';
+}
+
+// ── Info tab ──────────────────────────────────────────────────────────────────
+function populateInfo(conn) {
+  var rows = document.getElementById('info-rows');
+  rows.innerHTML = '';
+  var skip = ['id', 'status', 'last_used', 'password'];
+  var labels = {
+    name: 'Name', db_type: 'Type', host: 'Host', port: 'Port',
+    database: 'Database', username: 'User', path: 'File Path',
+    url: 'Connection URL', project_id: 'Project ID',
+    credentials_path: 'Credentials', last_used: 'Last Used',
+  };
+  Object.keys(conn).forEach(function(key) {
+    if (skip.includes(key)) return;
+    var div = document.createElement('div');
+    div.className = 'info-row';
+    div.innerHTML = '<span class="key">' + (labels[key] || key) + '</span>'
+      + '<span class="value">' + escapeHtml(String(conn[key] || '—')) + '</span>';
+    rows.appendChild(div);
+  });
+  // Add status row
+  var statusRow = document.createElement('div');
+  statusRow.className = 'info-row';
+  statusRow.innerHTML = '<span class="key">Status</span>'
+    + '<span class="value" style="color:var(--' + statusColor(conn.status) + ')">' + (conn.status || 'disconnected') + '</span>';
+  rows.appendChild(statusRow);
+
+  if (conn.last_used) {
+    var d = document.createElement('div');
+    d.className = 'info-row';
+    d.innerHTML = '<span class="key">Last Used</span><span class="value">' + formatDate(conn.last_used) + '</span>';
+    rows.appendChild(d);
+  }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t) {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(function(c) {
+    c.classList.toggle('active', c.id === 'tab-' + name);
+  });
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function showResultError(msg) {
+  document.getElementById('results-wrap').innerHTML = '<div class="results-error">⚠ ' + escapeHtml(msg) + '</div>';
+}
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function dbTypeIcon(t) {
+  return { 'SQLite':'🗃', 'SQL (PostgreSQL)':'🐘', 'SQL (MySQL)':'🐬',
+           'MSSQL':'🏢', 'Firestore':'🔥', 'ORM (SQLAlchemy)':'⚙' }[t] || '🗄';
+}
+function statusColor(s) {
+  return { connected:'green', disconnected:'muted', error:'red' }[s] || 'muted';
+}
+function formatDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString(); } catch(e) { return iso; }
+}
+
+// NEW: Function to quote identifiers based on database type
+function quoteIdentifier(identifier, dbType) {
+  if (!identifier) return '';
+  
+  // Different databases use different quote styles for identifiers
+  switch (dbType) {
+    case 'SQL (MySQL)':
+      // MySQL uses backticks
+      return '`' + identifier.replace(/`/g, '``') + '`';
+    case 'MSSQL':
+      // SQL Server uses square brackets
+      return '[' + identifier.replace(/]/g, ']]') + ']';
+    case 'SQL (PostgreSQL)':
+    case 'SQLite':
+    default:
+      // PostgreSQL and SQLite use double quotes
+      return '"' + identifier.replace(/"/g, '""') + '"';
+  }
+}
+</script>
+</body>
+</html>
