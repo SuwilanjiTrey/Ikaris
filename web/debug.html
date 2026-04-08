@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Debug Panel</title>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg0:      #0d0d14;
+  --bg1:      #11111b;
+  --bg2:      #181825;
+  --bg3:      #1e1e2e;
+  --bg4:      #313244;
+  --bg5:      #45475a;
+  --text:     #cdd6f4;
+  --sub:      #a6adc8;
+  --muted:    #6c7086;
+  --blue:     #89b4fa;
+  --lavender: #b4befe;
+  --green:    #a6e3a1;
+  --red:      #f38ba8;
+  --yellow:   #f9e2af;
+  --teal:     #94e2d5;
+  --peach:    #fab387;
+  --mauve:    #cba6f7;
+  --border:   #2a2a3e;
+  --font:     'IBM Plex Sans', sans-serif;
+  --mono:     'JetBrains Mono', monospace;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+html,body{
+  height:100%; width:100%;
+  font-family:var(--font);
+  background:var(--bg1);
+  color:var(--text);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+/* ── Top identity bar ──────────────────────────────────────────────────────── */
+#topbar{
+  display:flex;align-items:center;gap:12px;
+  padding:0 16px;
+  height:44px;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+#project-badge{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg4);
+  border-radius:6px;
+  padding:4px 12px;
+  font-size:12px; font-weight:600;
+}
+#project-type-icon{ font-size:15px; }
+#project-type-label{ color:var(--blue); }
+#project-framework{ color:var(--sub); font-weight:400; font-size:11px; margin-left:2px; }
+#topbar-spacer{ flex:1; }
+#project-root{
+  font-family:var(--mono); font-size:10px; color:var(--muted);
+  max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ── Tab bar ───────────────────────────────────────────────────────────────── */
+#tabbar{
+  display:flex; gap:0;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  padding:0 16px;
+  flex-shrink:0;
+}
+.tab{
+  padding:8px 16px; font-size:12px; font-weight:500; color:var(--muted);
+  cursor:pointer; border-bottom:2px solid transparent; transition:all .18s;
+  white-space:nowrap; user-select:none;
+}
+.tab:hover{ color:var(--text); }
+.tab.active{ color:var(--blue); border-bottom-color:var(--blue); }
+.tab-hidden{ display:none; }
+
+/* ── Content areas ─────────────────────────────────────────────────────────── */
+#content{ flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+.screen{ display:none; flex:1; flex-direction:column; overflow:hidden; min-height:0; }
+.screen.active{ display:flex; }
+
+/* ── Output terminal ───────────────────────────────────────────────────────── */
+#output-screen{ flex-direction:column; }
+#output-toolbar{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 14px;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.out-btn{
+  display:inline-flex; align-items:center; gap:5px;
+  background:var(--bg4); color:var(--sub);
+  border:1px solid var(--border); border-radius:6px;
+  padding:4px 10px; font-size:11px; font-family:var(--font);
+  cursor:pointer; transition:all .15s;
+}
+.out-btn:hover{ background:var(--bg5); border-color:var(--blue); color:var(--blue); }
+.out-btn.danger:hover{ border-color:var(--red); color:var(--red); }
+#output-status{ font-size:11px; color:var(--muted); margin-left:auto; font-family:var(--mono); }
+
+#terminal{
+  flex:1; overflow-y:auto; overflow-x:hidden;
+  padding:14px 16px;
+  background:var(--bg0);
+  font-family:var(--mono); font-size:12px; line-height:1.7;
+  /* Improved scrolling */
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg5) transparent;
+}
+.line{ white-space:pre-wrap; word-break:break-all; }
+.line.cmd    { color:var(--blue); }
+.line.stdout { color:var(--text); }
+.line.stderr { color:var(--red); }
+.line.system { color:var(--green); font-style:italic; }
+.line.warn   { color:var(--yellow); }
+
+/* Improved scrollbar styling */
+#terminal::-webkit-scrollbar{ width:8px; }
+#terminal::-webkit-scrollbar-track{ background:var(--bg0); }
+#terminal::-webkit-scrollbar-thumb{ 
+  background:var(--bg5); 
+  border-radius:4px;
+  border:1px solid var(--bg0);
+}
+#terminal::-webkit-scrollbar-thumb:hover{ background:var(--bg4); }
+
+/* ── Dependency manager ─────────────────────────────────────────────────────── */
+#deps-screen{ flex-direction:column; overflow:hidden; min-height:0; }
+#deps-inner{ 
+  flex:1; 
+  overflow-y:auto; 
+  padding:16px; 
+  display:flex; 
+  flex-direction:column; 
+  gap:14px;
+  /* Improved scrolling */
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg5) transparent;
+}
+
+/* Improved scrollbar for deps */
+#deps-inner::-webkit-scrollbar{ width:8px; }
+#deps-inner::-webkit-scrollbar-track{ background:var(--bg1); }
+#deps-inner::-webkit-scrollbar-thumb{ 
+  background:var(--bg5); 
+  border-radius:4px;
+  border:1px solid var(--bg1);
+}
+#deps-inner::-webkit-scrollbar-thumb:hover{ background:var(--bg4); }
+
+.deps-section{
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:10px; overflow:hidden;
+}
+.deps-section-header{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px;
+  background:var(--bg3); border-bottom:1px solid var(--border);
+  font-size:12px; font-weight:600;
+}
+.deps-section-header .ds-icon{ font-size:16px; }
+.deps-list{ 
+  padding:8px 14px; 
+  display:flex; 
+  flex-direction:column; 
+  gap:4px;
+  /* Improved scrolling for long dependency lists */
+  max-height:300px;
+  overflow-y:auto;
+}
+/* Improved scrollbar for deps list */
+.deps-list::-webkit-scrollbar{ width:6px; }
+.deps-list::-webkit-scrollbar-track{ background:var(--bg2); }
+.deps-list::-webkit-scrollbar-thumb{ 
+  background:var(--bg4); 
+  border-radius:3px;
+}
+.deps-list::-webkit-scrollbar-thumb:hover{ background:var(--bg5); }
+
+.dep-row{
+  display:flex; align-items:center; gap:8px;
+  padding:6px 8px; border-radius:6px;
+  font-size:12px; transition:background .15s;
+}
+.dep-row:hover{ background:var(--bg3); }
+.dep-name{ flex:1; font-family:var(--mono); color:var(--text); }
+.dep-version{ font-family:var(--mono); font-size:11px; color:var(--muted); min-width:70px; text-align:right; }
+.dep-tag{
+  font-size:9px; font-weight:700; letter-spacing:.5px;
+  padding:2px 6px; border-radius:50px;
+}
+.dep-tag.dev{ background:#2a2035; color:var(--mauve); }
+.dep-tag.dep{ background:#1c3020; color:var(--green); }
+.dep-actions{ display:flex; gap:4px; }
+.dep-act-btn{
+  background:var(--bg4); color:var(--sub);
+  border:none; border-radius:4px;
+  padding:2px 7px; font-size:10px; cursor:pointer;
+  transition:all .15s;
+}
+.dep-act-btn:hover{ background:var(--bg5); color:var(--blue); }
+.dep-act-btn.rm:hover{ color:var(--red); }
+
+/* search bar */
+.search-row{
+  display:flex; gap:8px; align-items:center;
+  padding:10px 14px; border-bottom:1px solid var(--border);
+}
+.search-input{
+  flex:1; background:var(--bg3); color:var(--text);
+  border:1px solid var(--border); border-radius:6px;
+  padding:6px 10px; font-size:12px; font-family:var(--mono);
+  outline:none;
+}
+.search-input:focus{ border-color:var(--blue); }
+.search-btn{
+  background:var(--blue); color:var(--bg0);
+  border:none; border-radius:6px;
+  padding:6px 14px; font-size:12px; font-weight:600;
+  font-family:var(--font); cursor:pointer;
+}
+.search-btn:hover{ background:var(--lavender); }
+
+/* empty state */
+.empty-state{
+  text-align:center; padding:30px; color:var(--muted); font-size:12px;
+}
+.empty-state .es-icon{ font-size:32px; margin-bottom:10px; }
+
+/* ── ADB screen ─────────────────────────────────────────────────────────────── */
+#adb-screen{ flex-direction:column; overflow:hidden; min-height:0; }
+#adb-inner{ 
+  flex:1; 
+  overflow-y:auto; 
+  padding:16px; 
+  display:flex; 
+  flex-direction:column; 
+  gap:12px;
+  /* Improved scrolling */
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg5) transparent;
+}
+
+/* Improved scrollbar for ADB */
+#adb-inner::-webkit-scrollbar{ width:8px; }
+#adb-inner::-webkit-scrollbar-track{ background:var(--bg1); }
+#adb-inner::-webkit-scrollbar-thumb{ 
+  background:var(--bg5); 
+  border-radius:4px;
+  border:1px solid var(--bg1);
+}
+#adb-inner::-webkit-scrollbar-thumb:hover{ background:var(--bg4); }
+
+.adb-device-card{
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px;
+  display:flex; align-items:center; gap:14px;
+}
+.adb-device-icon{ font-size:28px; }
+.adb-device-info{ flex:1; }
+.adb-device-name{ font-size:13px; font-weight:600; }
+.adb-device-serial{ font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px; }
+.adb-status-dot{
+  width:8px;height:8px; border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 6px var(--green);
+}
+
+/* logcat stream */
+#logcat-stream{
+  flex:1; overflow-y:auto;
+  background:var(--bg0); border-radius:8px;
+  padding:12px 14px;
+  font-family:var(--mono); font-size:11px; line-height:1.7;
+  border:1px solid var(--border);
+  display:none;
+  /* Improved scrolling */
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg5) transparent;
+}
+/* Improved scrollbar for logcat */
+#logcat-stream::-webkit-scrollbar{ width:8px; }
+#logcat-stream::-webkit-scrollbar-track{ background:var(--bg0); }
+#logcat-stream::-webkit-scrollbar-thumb{ 
+  background:var(--bg5); 
+  border-radius:4px;
+  border:1px solid var(--bg0);
+}
+#logcat-stream::-webkit-scrollbar-thumb:hover{ background:var(--bg4); }
+
+.lc-line{ white-space:pre-wrap; word-break:break-all; }
+.lc-E{ color:var(--red); }
+.lc-W{ color:var(--yellow); }
+.lc-I{ color:var(--text); }
+.lc-D{ color:var(--muted); }
+.lc-V{ color:var(--bg5); }
+
+/* ── Maven / Spring screen ──────────────────────────────────────────────────── */
+#maven-screen{ flex-direction:column; overflow:hidden; min-height:0; }
+#maven-inner{ 
+  flex:1; 
+  overflow-y:auto; 
+  padding:16px; 
+  display:flex; 
+  flex-direction:column; 
+  gap:14px;
+  /* Improved scrolling */
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg5) transparent;
+}
+
+/* Improved scrollbar for Maven */
+#maven-inner::-webkit-scrollbar{ width:8px; }
+#maven-inner::-webkit-scrollbar-track{ background:var(--bg1); }
+#maven-inner::-webkit-scrollbar-thumb{ 
+  background:var(--bg5); 
+  border-radius:4px;
+  border:1px solid var(--bg1);
+}
+#maven-inner::-webkit-scrollbar-thumb:hover{ background:var(--bg4); }
+
+.mvn-card{
+  background:var(--bg2); border:1px solid var(--border);
+  border-radius:10px; overflow:hidden;
+}
+.mvn-card-header{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px; background:var(--bg3);
+  border-bottom:1px solid var(--border);
+  font-size:12px; font-weight:600;
+}
+.mvn-dep-list{ 
+  padding:8px 14px; 
+  display:flex; 
+  flex-direction:column; 
+  gap:4px; 
+  max-height:240px; 
+  overflow-y:auto;
+}
+/* Improved scrollbar for Maven deps */
+.mvn-dep-list::-webkit-scrollbar{ width:6px; }
+.mvn-dep-list::-webkit-scrollbar-track{ background:var(--bg2); }
+.mvn-dep-list::-webkit-scrollbar-thumb{ 
+  background:var(--bg4); 
+  border-radius:3px;
+}
+.mvn-dep-list::-webkit-scrollbar-thumb:hover{ background:var(--bg5); }
+
+/* search results */
+.search-result-row{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px; border-radius:6px; font-size:12px;
+  cursor:pointer; transition:background .15s;
+}
+.search-result-row:hover{ background:var(--bg3); }
+.sr-gid{ color:var(--muted); font-family:var(--mono); font-size:10px; }
+.sr-aid{ font-family:var(--mono); font-weight:600; flex:1; }
+.sr-ver{ font-family:var(--mono); font-size:11px; color:var(--peach); }
+.add-dep-btn{
+  background:var(--bg4); color:var(--green);
+  border:1px solid var(--border); border-radius:5px;
+  padding:3px 9px; font-size:10px; cursor:pointer;
+}
+.add-dep-btn:hover{ background:var(--green); color:var(--bg0); }
+
+/* ── Info / welcome screen ──────────────────────────────────────────────────── */
+#info-screen{
+  flex-direction:column; align-items:center; justify-content:center;
+  gap:16px;
+  padding:30px;
+}
+.info-logo{
+  width:64px;height:64px;
+  background:linear-gradient(135deg,var(--blue),var(--mauve));
+  border-radius:18px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:30px;
+}
+.info-title{ font-size:18px; font-weight:600; }
+.info-sub{ font-size:12px; color:var(--muted); text-align:center; max-width:300px; line-height:1.7; }
+.info-badge{
+  display:inline-flex; align-items:center; gap:6px;
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:20px; padding:5px 14px;
+  font-size:12px; color:var(--sub);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes fadeIn{ from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+.screen.active{ animation:fadeIn .2s ease; }
+@keyframes blink{ 50%{opacity:0} }
+.cursor{ animation:blink 1s step-end infinite; display:inline-block; color:var(--blue); }
+@keyframes spin{ to{transform:rotate(360deg)} }
+.spin{ animation:spin .8s linear infinite; display:inline-block; }
+
+/* ── Responsive adjustments ─────────────────────────────────────────────────── */
+@media (max-height: 600px) {
+  .deps-section-header, .mvn-card-header {
+    padding: 8px 12px;
+  }
+  .dep-row, .search-result-row {
+    padding: 4px 6px;
+  }
+  #terminal, #deps-inner, #adb-inner, #maven-inner, #logcat-stream {
+    padding: 10px 12px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ── TOP BAR ──────────────────────────────────────────────────────────────── -->
+<div id="topbar">
+  <div id="project-badge">
+    <span id="project-type-icon">⚙</span>
+    <span id="project-type-label">Scanning…</span>
+    <span id="project-framework"></span>
+  </div>
+  <div id="topbar-spacer"></div>
+  <span id="project-root"></span>
+</div>
+
+<!-- ── TAB BAR ──────────────────────────────────────────────────────────────── -->
+<div id="tabbar">
+  <div class="tab active" data-tab="output"   onclick="switchTab('output')">Output</div>
+  <div class="tab"        data-tab="deps"     onclick="switchTab('deps')"  id="tab-deps">Dependencies</div>
+  <div class="tab tab-hidden" data-tab="adb"  onclick="switchTab('adb')"  id="tab-adb">ADB Logcat</div>
+  <div class="tab tab-hidden" data-tab="maven" onclick="switchTab('maven')" id="tab-maven">POM Deps</div>
+</div>
+
+<!-- ── CONTENT ──────────────────────────────────────────────────────────────── -->
+<div id="content">
+
+  <!-- OUTPUT TERMINAL -->
+  <div class="screen active" id="output-screen">
+    <div id="output-toolbar">
+      <button class="out-btn" onclick="clearTerminal()">✕ Clear</button>
+      <button class="out-btn" onclick="scrollToBottom()">⬇ Bottom</button>
+      <span id="output-status"></span>
+    </div>
+    <div id="terminal">
+      <div class="line system">▸ Debug panel ready. Open a project to begin.</div>
+      <span class="cursor">█</span>
+    </div>
+  </div>
+
+  <!-- DEPENDENCY MANAGER (npm) -->
+  <div class="screen" id="deps-screen">
+    <div id="deps-inner">
+
+      <!-- Search bar -->
+      <div class="deps-section">
+        <div class="deps-section-header">
+          <span class="ds-icon">🔍</span> Search &amp; Install Package
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="npm-search-input" placeholder="package-name or package-name@version"
+            onkeydown="if(event.key==='Enter') installFromSearch()" />
+          <button class="search-btn" onclick="installFromSearch()">Install</button>
+        </div>
+      </div>
+
+      <!-- Dependencies list -->
+      <div class="deps-section">
+        <div class="deps-section-header">
+          <span class="ds-icon">📦</span>
+          <span>Dependencies</span>
+          <span id="dep-count" style="color:var(--muted);font-size:11px;margin-left:auto;font-weight:400;"></span>
+        </div>
+        <div class="deps-list" id="deps-list">
+          <div class="empty-state"><div class="es-icon">📂</div>Open a JS/Node project to see dependencies.</div>
+        </div>
+      </div>
+
+      <!-- Dev Dependencies list -->
+      <div class="deps-section" id="devdeps-section" style="display:none;">
+        <div class="deps-section-header">
+          <span class="ds-icon">🔧</span>
+          <span>Dev Dependencies</span>
+          <span id="devdep-count" style="color:var(--muted);font-size:11px;margin-left:auto;font-weight:400;"></span>
+        </div>
+        <div class="deps-list" id="devdeps-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ADB LOGCAT -->
+  <div class="screen" id="adb-screen">
+    <div id="adb-inner">
+      <div class="adb-device-card" id="no-device-card">
+        <div class="adb-device-icon">📱</div>
+        <div class="adb-device-info">
+          <div class="adb-device-name">No devices listed yet</div>
+          <div class="adb-device-serial">Use sidebar → Show Devices to scan</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="out-btn" onclick="callBridge('adb_devices')">📱 Scan Devices</button>
+        <button class="out-btn" onclick="callBridge('adb_logcat')">📡 Stream Logcat</button>
+        <button class="out-btn" onclick="callBridge('adb_logcat_crash')">🔴 Errors Only</button>
+        <button class="out-btn danger" onclick="callBridge('adb_clear_logcat')">🗑 Clear</button>
+      </div>
+
+      <div id="logcat-stream"></div>
+    </div>
+  </div>
+
+  <!-- MAVEN / SPRING DEPS -->
+  <div class="screen" id="maven-screen">
+    <div id="maven-inner">
+
+      <!-- Search Maven Central -->
+      <div class="mvn-card" id="dep-search-card">
+        <div class="mvn-card-header">
+          <span>🔍</span> Search Maven Central
+        </div>
+        <div class="search-row">
+          <input class="search-input" id="maven-search-input"
+            placeholder="e.g. spring-security, lombok, jackson-databind"
+            onkeydown="if(event.key==='Enter') mavenSearch()" />
+          <button class="search-btn" onclick="mavenSearch()">Search</button>
+        </div>
+        <div id="maven-results" style="padding:0 14px 10px;"></div>
+      </div>
+
+      <!-- POM deps list -->
+      <div class="mvn-card">
+        <div class="mvn-card-header">
+          <span>📄</span> Current pom.xml Dependencies
+        </div>
+        <div class="mvn-dep-list" id="pom-deps-list">
+          <div class="empty-state"><div class="es-icon">📄</div>Open a Maven / Spring project.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+// ── Bridge setup ──────────────────────────────────────────────────────────────
+var Bridge = null;
+new QWebChannel(qt.webChannelTransport, function(ch) {
+  Bridge = ch.objects.DebugBridge;
+  if (Bridge) Bridge.request_project_info();
+});
+
+function callBridge(method) {
+  if (!Bridge) return;
+  if (typeof Bridge[method] === 'function') Bridge[method]();
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t) {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.screen').forEach(function(s) {
+    s.classList.toggle('active', s.id === name + '-screen');
+  });
+}
+
+// ── Project info (pushed by Python) ──────────────────────────────────────────
+var _projectInfo = {};
+
+window.onProjectInfo = function(info) {
+  _projectInfo = info;
+  var type  = info.type      || 'UNKNOWN';
+  var fw    = info.framework || '';
+  var root  = info.root      || '';
+
+  // Topbar icons
+  var icons = {
+    'WEB':          '🌐',
+    'REACT_NATIVE': '📱',
+    'NODE':         '🟢',
+    'SPRING':       '🍃',
+    'MAVEN':        '📦',
+    'UNKNOWN':      '⚙',
+  };
+  document.getElementById('project-type-icon').textContent  = icons[type] || '⚙';
+  document.getElementById('project-type-label').textContent = type.replace('_',' ');
+  document.getElementById('project-framework').textContent  = fw ? '· ' + fw : '';
+  document.getElementById('project-root').textContent       = root ? root.split('/').slice(-2).join('/') : '';
+  document.getElementById('project-root').title             = root;
+
+  // Show/hide tabs
+  var isJs     = type === 'WEB' || type === 'REACT_NATIVE' || type === 'NODE';
+  var isNative = type === 'REACT_NATIVE';
+  var isMaven  = type === 'SPRING' || type === 'MAVEN';
+
+  document.getElementById('tab-deps').classList.toggle('tab-hidden', !isJs);
+  document.getElementById('tab-adb').classList.toggle('tab-hidden', !isNative);
+  document.getElementById('tab-maven').classList.toggle('tab-hidden', !isMaven);
+
+  // Populate dep list for JS projects
+  if (isJs) {
+    populateDepList(info.pkg || {});
+  }
+
+  // Populate POM deps for Maven projects
+  if (isMaven) {
+    // pom deps are read by the bridge on demand; show placeholder
+    document.getElementById('pom-deps-list').innerHTML =
+      '<div class="empty-state" style="padding:12px;">Click <b>Search Maven Central</b> above to find and add dependencies.</div>';
+  }
+
+  // Welcome line
+  appendLine('system', '▸ Project: ' + (fw || type) + (root ? ' @ ' + root : ''));
+};
+
+// ── Output terminal ───────────────────────────────────────────────────────────
+window.onOutput = function(channel, text) {
+  // Route logcat to the ADB tab if active
+  if (channel === 'stdout' && isLogcatLine(text)) {
+    appendLogcat(text);
+    return;
+  }
+  appendLine(channel, text);
+  // Also copy stderr to logcat panel if it's ADB output
+  if (channel === 'stderr') appendLogcat(text);
+};
+
+function appendLine(cls, text) {
+  var t   = document.getElementById('terminal');
+  var cur = t.querySelector('.cursor');
+  if (cur) cur.remove();
+
+  var d = document.createElement('div');
+  d.className = 'line ' + (cls || 'stdout');
+  d.textContent = text;
+  t.appendChild(d);
+
+  var c = document.createElement('span');
+  c.className = 'cursor';
+  c.textContent = '█';
+  t.appendChild(c);
+
+  // Auto-scroll to bottom for new content
+  // Only scroll if user is already at bottom (not manually scrolling up)
+  var isScrolledToBottom = t.scrollHeight - t.clientHeight <= t.scrollTop + 1;
+  if (isScrolledToBottom) {
+    scrollToBottom();
+  }
+
+  // Update status
+  var lines = t.querySelectorAll('.line').length;
+  document.getElementById('output-status').textContent = lines + ' lines';
+}
+
+function scrollToBottom() {
+  var t = document.getElementById('terminal');
+  t.scrollTop = t.scrollHeight;
+}
+
+function clearTerminal() {
+  var t = document.getElementById('terminal');
+  t.innerHTML = '<span class="cursor">█</span>';
+  document.getElementById('output-status').textContent = '';
+}
+
+// ── NPM dep list ──────────────────────────────────────────────────────────────
+function populateDepList(pkg) {
+  var deps    = pkg.dependencies    || {};
+  var devDeps = pkg.devDependencies || {};
+
+  var depList    = document.getElementById('deps-list');
+  var devList    = document.getElementById('devdeps-list');
+  var devSection = document.getElementById('devdeps-section');
+
+  document.getElementById('dep-count').textContent    = Object.keys(deps).length + ' packages';
+  document.getElementById('devdep-count').textContent = Object.keys(devDeps).length + ' packages';
+
+  depList.innerHTML = '';
+  devList.innerHTML = '';
+
+  function buildRow(name, version, isDev) {
+    var row = document.createElement('div');
+    row.className = 'dep-row';
+    row.innerHTML =
+      '<span class="dep-name">' + escHtml(name) + '</span>' +
+      '<span class="dep-version">' + escHtml(version) + '</span>' +
+      '<span class="dep-tag ' + (isDev ? 'dev' : 'dep') + '">' + (isDev ? 'dev' : 'dep') + '</span>' +
+      '<div class="dep-actions">' +
+        '<button class="dep-act-btn" onclick="updatePkg(\'' + escHtml(name) + '\')">↑</button>' +
+        '<button class="dep-act-btn rm" onclick="removePkg(\'' + escHtml(name) + '\')">✕</button>' +
+      '</div>';
+    return row;
+  }
+
+  if (Object.keys(deps).length === 0) {
+    depList.innerHTML = '<div class="empty-state">No dependencies found.</div>';
+  } else {
+    Object.entries(deps).forEach(function(e) { depList.appendChild(buildRow(e[0], e[1], false)); });
+  }
+
+  if (Object.keys(devDeps).length > 0) {
+    devSection.style.display = 'block';
+    Object.entries(devDeps).forEach(function(e) { devList.appendChild(buildRow(e[0], e[1], true)); });
+  } else {
+    devSection.style.display = 'none';
+  }
+}
+
+function installFromSearch() {
+  var val = document.getElementById('npm-search-input').value.trim();
+  if (!val || !Bridge) return;
+  Bridge.install_package(val);
+  switchTab('output');
+}
+
+function updatePkg(name) {
+  if (!Bridge) return;
+  Bridge.update_package(name);
+  switchTab('output');
+}
+
+function removePkg(name) {
+  if (!confirm('Remove "' + name + '"?')) return;
+  if (!Bridge) return;
+  Bridge.remove_package(name);
+  switchTab('output');
+}
+
+// ── ADB / Logcat ──────────────────────────────────────────────────────────────
+function isLogcatLine(text) {
+  // Logcat brief format: I/tag(pid): msg
+  return /^[VDIWEF]\//.test(text);
+}
+
+function appendLogcat(text) {
+  var el = document.getElementById('logcat-stream');
+  el.style.display = 'block';
+
+  var lines = text.split('\n');
+  lines.forEach(function(line) {
+    if (!line.trim()) return;
+    var d = document.createElement('div');
+    d.className = 'lc-line';
+    var level = line.charAt(0);
+    d.classList.add('lc-' + level);
+    d.textContent = line;
+    el.appendChild(d);
+  });
+  
+  // Auto-scroll to bottom for new content
+  // Only scroll if user is already at bottom (not manually scrolling up)
+  var isScrolledToBottom = el.scrollHeight - el.clientHeight <= el.scrollTop + 1;
+  if (isScrolledToBottom) {
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+// ── Maven / Spring search ─────────────────────────────────────────────────────
+function mavenSearch() {
+  var q = document.getElementById('maven-search-input').value.trim();
+  if (!q || !Bridge) return;
+  document.getElementById('maven-results').innerHTML =
+    '<div style="color:var(--muted);padding:8px;font-size:12px;"><span class="spin">⟳</span> Searching…</div>';
+  Bridge.search_maven_dependency(q);
+}
+
+window.onMavenSearchResults = function(results) {
+  var el = document.getElementById('maven-results');
+  if (!results.length) {
+    el.innerHTML = '<div style="color:var(--muted);padding:8px;font-size:12px;">No results found.</div>';
+    return;
+  }
+  if (results[0] && results[0].error) {
+    el.innerHTML = '<div style="color:var(--red);padding:8px;font-size:12px;">⚠ ' + escHtml(results[0].error) + '</div>';
+    return;
+  }
+  var html = '';
+  results.forEach(function(r) {
+    html +=
+      '<div class="search-result-row">' +
+        '<div style="flex:1;">' +
+          '<div class="sr-gid">' + escHtml(r.g) + '</div>' +
+          '<div class="sr-aid">' + escHtml(r.a) + '</div>' +
+        '</div>' +
+        '<span class="sr-ver">' + escHtml(r.latestVersion || '') + '</span>' +
+        '<button class="add-dep-btn" onclick="addMavenDep(\'' +
+          escHtml(r.g) + '\',\'' + escHtml(r.a) + '\',\'' + escHtml(r.latestVersion || '') + '\')">+ Add</button>' +
+      '</div>';
+  });
+  el.innerHTML = html;
+};
+
+function addMavenDep(g, a, v) {
+  if (!Bridge) return;
+  Bridge.add_maven_dependency(g, a, v);
+  switchTab('output');
+}
+
+// show dep search card (called from sidebar button)
+window.showDepSearch = function() {
+  switchTab('maven');
+  document.getElementById('maven-search-input').focus();
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

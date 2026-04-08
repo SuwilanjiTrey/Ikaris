@@ -22,6 +22,7 @@ from components.AI import AIPanel
 from components.new_project import NewProjectWidget
 from utils.recent_projects import RecentProjects
 from components.database import DatabasePanel, DBBridge
+from components.debug import DebugPanel
 
 
 
@@ -218,6 +219,7 @@ class CodeEditor(QMainWindow):
         self.themePage_visible = False
         self.Ai_visible = False
         self.active_panel = None
+        self.debug_index = False
         
         
         
@@ -244,9 +246,6 @@ class CodeEditor(QMainWindow):
         #self.ai_fab.set_position((750, 300))   # Use custom coordinates
         
 
-
-    def resizeEvent(self, event):
-        pass
 
 
     def initUI(self):
@@ -464,19 +463,6 @@ class CodeEditor(QMainWindow):
         #self.ai_fab.setVisible(True)
 
 
-
-    def apply_settings(self, updated_settings):
-        pass
-
-
-
-    
-
-    def save_settings(self, settings):
-        pass
-
-    
-
     def create_sidebar_buttons(self, layout):
         # Create buttons with icons (excluding file operations)
         buttons_data = [
@@ -484,8 +470,8 @@ class CodeEditor(QMainWindow):
             #('Create Project', 'images/UI/layer-plus.png', self.start_project),
             ('Run', 'images/UI/play2.png', self.open_debug),
             ('commit', 'images/UI/code-branch.png',lambda: self.github()),
-            ('run server', 'images/UI/database.png', self.open_db),
-            ('Plugins', 'images/UI/menu.png', lambda: self.plugins()),
+            ('run server', 'images/UI/database.png',lambda: self.open_db()),
+            #('Plugins', 'images/UI/menu.png', lambda: self.plugins()),
             #('open existing project', 'images/UI/folder-open.png', self.open_file_searcher),
             ('open terminal', 'images/UI/terminal2.png', self.toggle_terminal),
             ('settings', 'images/UI/gear.png',lambda: self.settings()),
@@ -629,16 +615,14 @@ class CodeEditor(QMainWindow):
         )
 
     def setup_debug_panel(self, layout):
-        label = QLabel("Debug Console")
-        label.setStyleSheet("padding: 5px; font-weight: bold;")
+        # DebugPanel creates its own internal channel for DBBridge.
+        # self.channel (for WebBridge/ThemeEngine/etc) is set up in setup_editor_and_image.
+        self.debug_panel = DebugPanel(
+            debug_layout    = layout,
+            main_window  = self,
+            channel      = None,   # panel manages its own channel
+        )
 
-        layout.addWidget(label)
-
-        # Add debug widgets later
-
-        
-        
-    
         
 
     def update_directory_label(self):
@@ -800,165 +784,36 @@ class CodeEditor(QMainWindow):
             
     def open_db(self):
         if self.active_panel == "db":
-            self.show_panel(None)
+            self.show_panel(None)            
         else:
             self.show_panel("db")
+            self._hide_all_panels() 
+            self.database_panel.database_view.setVisible(True) 
 
     def open_debug(self):
-        if self.active_panel == "debug":
-            self.show_panel(None)
+        self.debug_index = not self.debug_index
+        #print("debug value: ", self.debug_index)
+        
+        #get current directory
+        base_path = Path(__file__).parent.resolve()
+        debug_page = base_path / "web" / "test.html"
+        
+        ## wrap it in qt
+        index = self.model.index(str(debug_page))
+        
+        if not self.debug_index:
+            if self.active_panel == "debug":
+                self.show_panel(None)
         else:
-            self.show_panel("debug")
+            if self.debug_index:
+                self.show_panel("debug")
+                self.file_clicked(index)
 
-    def apply_dark_theme(self):
-        self.setStyleSheet("""
-            QMainWindow{
-                background-color: #2b2b2b;
-                color: #2b2b2b;
-            }
-            QWidget {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                border: 1px solid #4a4a4a;
-                border-radius: 8px;      
-            }               
-            QPushButton, QToolButton {
-                
-                border: none;
-                padding: 2px;
-                margin: 1px; 
-            }
-            QPushButton:hover, QToolButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed, QToolButton:pressed {
-                background-color: #5a5a5a;
-            }
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: none;
-            }
-            QTreeView {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                border-top: 1px solid #3a3a3a;
-            }
-            QTreeView::item:hover {
-                background-color: #3a3a3a;
-            }
-            QTreeView::item:selected {
-                background-color: #4a4a4a;
-            }
-            QMenu {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                border: 1px solid #3a3a3a;
-            }
-            QMenu::item:selected {
-                background-color: #4a4a4a;
-            }                    
-                           
-        """)
-
-    def apply_temp_theme(self):
-        self.setStyleSheet("""
-            QMainWindow{
-                background-color: yellow;
-                color: #2b2b2b;
-            }
-            QWidget {
-                background-color: green;
-                color: #ffffff;
-            }               
-            QPushButton, QToolButton {
-                border: none;
-                padding: 2px;
-                margin: 1px;   
-            }
-            QPushButton:hover, QToolButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed, QToolButton:pressed {
-                background-color: #5a5a5a;
-            }
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: none;
-            }
-            QTreeView {
-                background-color: blue;
-                color: #ffffff;
-                border-top: 1px solid #3a3a3a;
-            }
-            QTreeView::item:hover {
-                background-color: #3a3a3a;
-            }
-            QTreeView::item:selected {
-                background-color: #4a4a4a;
-            }
-            QMenu {
-                background-color: yellow;
-                color: #ffffff;
-                border: 1px solid #3a3a3a;
-            }
-            QMenu::item:selected {
-                background-color: #4a4a4a;
-            }                    
-                           
-        """)
-
-    def apply_light_theme(self):
-        self.setStyleSheet("""
-            QMainWindow, QWidget {
-                background-color: #ffffff; 
-                color: #2b2b2b;
-            }
-            QPushButton, QToolButton {
-                
-                border: none;
-                padding: 2px;
-                margin: 1px;
-            }
-            QPushButton:hover, QToolButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed, QToolButton:pressed {
-                background-color: #5a5a5a;
-            }
-            QTextEdit {
-                background-color: #ffffff;
-                color: #1e1e1e;
-                border: none;
-            }
-            QTreeView {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                border-top: 1px solid #3a3a3a;
-            }
-            QTreeView::item:hover {
-                background-color: #3a3a3a;
-            }
-            QTreeView::item:selected {
-                background-color: #4a4a4a;
-            }
-            QMenu {
-                background-color: #ffffff;
-                color: #2b2b2b;
-                border: 1px solid #3a3a3a;
-            }
-            QMenu::item:selected {
-                background-color: #4a4a4a;
-            }                    
-                        
-        """)
-
-#more code below
        
     
     def file_clicked(self, index):
         path = self.model.filePath(index)
+        print("path clicked: ", path)
         
         if os.path.isdir(path):
             self.current_folder = path
@@ -1018,6 +873,7 @@ class CodeEditor(QMainWindow):
             if path.lower().endswith(('.db', '.sqlite', '.sqlite3', '.sql')):
                 if hasattr(self, 'database_panel'):
                     self.show_panel("db")
+                    self._hide_all_panels() 
                     self.database_panel.open_db_file(path)
                 else:
                     QMessageBox.information(self, "Database", "Open the Database panel first.")
@@ -1228,8 +1084,6 @@ class CodeEditor(QMainWindow):
         new_file = QShortcut(QKeySequence("Ctrl+N"), self)
         new_file.activated.connect(self.create_new_file)
 
-        run_code = QShortcut(QKeySequence("Ctrl+R"), self)
-        run_code.activated.connect(self.run_code)
 
         toggle_tree_view = QShortcut(QKeySequence("Ctrl+B"), self)
         toggle_tree_view.activated.connect(lambda: self.toggle_tree_view())
@@ -1428,25 +1282,6 @@ class CodeEditor(QMainWindow):
                 self.plugin_page.setVisible(False)
 
 
-        
-        
-        
-
-
-
-
-    def run_code(self):            
-        pass
-    
-
-
-
-    def run_server(self):
-        pass
-
-    def database(self):
-        pass
-
 
 
     def toggle_terminal(self, commands=None):
@@ -1500,7 +1335,7 @@ class CodeEditor(QMainWindow):
         for widget in [
             self.editor, self.current_file_tabs, self.image_label,
             self.landing_page, self.plugin_page, self.gitHandler,
-            self.settings_page, self.themes_page, self.new_project_page,
+            self.settings_page, self.themes_page, self.new_project_page, self.database_panel.database_view
         ]:
             widget.setVisible(False)
             

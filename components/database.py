@@ -312,49 +312,104 @@ class FirestoreConnectionManager:
             return {"error": str(e)}
     
     def _execute_select(self, client, translated: dict) -> dict:
-        """Execute SELECT query."""
-        collection_ref = client.collection(translated['collection'])
-        
-        # Apply WHERE conditions
-        for field, operator, value in translated['where_conditions']:
+        """Execute SELECT query — supports document_id and subcollection paths."""
+        from google.cloud.firestore import Query
+
+        collection_name  = translated['collection']
+        document_id      = translated.get('document_id')
+        subcollection    = translated.get('subcollection')
+        sub_document_id  = translated.get('sub_document_id')
+        fields           = translated.get('fields', [])
+
+        # ── Single document fetch ─────────────────────────────────────────────
+        if document_id and not subcollection:
+            doc_ref  = client.collection(collection_name).document(document_id)
+            snapshot = doc_ref.get()
+            if not snapshot.exists:
+                return {"documents": []}
+            doc_dict = snapshot.to_dict() or {}
+            doc_dict['_id'] = snapshot.id
+            if fields:
+                doc_dict = {k: v for k, v in doc_dict.items() if k in fields or k == '_id'}
+            return {"documents": [doc_dict]}
+
+        # ── Sub-document fetch ────────────────────────────────────────────────
+        if document_id and subcollection and sub_document_id:
+            doc_ref  = (client.collection(collection_name)
+                              .document(document_id)
+                              .collection(subcollection)
+                              .document(sub_document_id))
+            snapshot = doc_ref.get()
+            if not snapshot.exists:
+                return {"documents": []}
+            doc_dict = snapshot.to_dict() or {}
+            doc_dict['_id'] = snapshot.id
+            if fields:
+                doc_dict = {k: v for k, v in doc_dict.items() if k in fields or k == '_id'}
+            return {"documents": [doc_dict]}
+
+        # ── Collection / sub-collection query ─────────────────────────────────
+        if document_id and subcollection:
+            collection_ref = (client.collection(collection_name)
+                                    .document(document_id)
+                                    .collection(subcollection))
+        else:
+            collection_ref = client.collection(collection_name)
+
+        # WHERE
+        for field, operator, value in translated.get('where_conditions', []):
             collection_ref = collection_ref.where(field, operator, value)
-        
-        # Apply ORDER BY
-        for field, direction in translated['order_by']:
-            from google.cloud.firestore import Query
-            direction = Query.ASCENDING if direction.upper() == 'ASC' else Query.DESCENDING
-            collection_ref = collection_ref.order_by(field, direction=direction)
-        
-        # Apply LIMIT
-        collection_ref = collection_ref.limit(translated['limit'])
-        
-        # Get documents
-        docs = collection_ref.stream()
+
+        # ORDER BY
+        for field, direction in translated.get('order_by', []):
+            fs_direction = Query.ASCENDING if direction.upper() == 'ASC' else Query.DESCENDING
+            collection_ref = collection_ref.order_by(field, direction=fs_direction)
+
+        # LIMIT
+        limit = translated.get('limit', 100)
+        if limit and limit > 0:
+            collection_ref = collection_ref.limit(limit)
+
         documents = []
-        
-        for doc in docs:
-            doc_dict = doc.to_dict()
+        for doc in collection_ref.stream():
+            doc_dict = doc.to_dict() or {}
             doc_dict['_id'] = doc.id
+            if fields:
+                doc_dict = {k: v for k, v in doc_dict.items() if k in fields or k == '_id'}
             documents.append(doc_dict)
-        
+
         return {"documents": documents}
     
     def _execute_insert(self, client, translated: dict) -> dict:
-        """Execute INSERT query."""
+        """Execute INSERT query — supports single and multi-row inserts."""
         collection_ref = client.collection(translated['collection'])
-        
-        # Create document data
-        doc_data = {}
-        for i, field in enumerate(translated['fields']):
-            doc_data[field] = translated['values'][i]
-        
-        # Add document
-        doc_ref = collection_ref.add(doc_data)
-        
+        fields         = translated['fields']
+        multi_insert   = translated.get('multi_insert', [])
+
+        # Normalise to a list of rows
+        if multi_insert:
+            rows = multi_insert
+        else:
+            rows = [translated['values']]
+
+        inserted_ids = []
+        for row in rows:
+            doc_data = {fields[i]: row[i] for i in range(len(fields))}
+            doc_ref  = collection_ref.add(doc_data)
+            inserted_ids.append(doc_ref[1].id)
+
+        if len(inserted_ids) == 1:
+            return {
+                "success":     True,
+                "message":     f"Document inserted with ID: {inserted_ids[0]}",
+                "document_id": inserted_ids[0],
+                "rowcount":    1,
+            }
         return {
-            "success": True,
-            "message": f"Document inserted with ID: {doc_ref[1].id}",
-            "document_id": doc_ref[1].id
+            "success":      True,
+            "message":      f"{len(inserted_ids)} documents inserted.",
+            "document_ids": inserted_ids,
+            "rowcount":     len(inserted_ids),
         }
     
     def _execute_update(self, client, translated: dict) -> dict:
@@ -575,10 +630,36 @@ class ConnectionDialog(QDialog):
         elif db_type == "Firestore":
             self._add_field("Project ID",          "project_id",      "my-firebase-project")
             self._add_field("Service Account JSON", "credentials_path", "/path/to/serviceAccount.json")
+
+            # Row with Browse + ⓘ info button side-by-side
+            cred_row = QHBoxLayout()
+            cred_row.setSpacing(6)
+
             browse_btn = QPushButton("Browse…")
             browse_btn.setStyleSheet("background:#313244; color:#cdd6f4; border-radius:5px; padding:4px 10px;")
             browse_btn.clicked.connect(self._browse_json)
-            self.dynamic_form.addRow("", browse_btn)
+            cred_row.addWidget(browse_btn)
+
+            info_btn = QPushButton("ⓘ")
+            info_btn.setFixedSize(26, 26)
+            info_btn.setToolTip(
+                "<b>How to get a Service Account JSON</b><br/><br/>"
+                "1. Go to <b>Firebase Console</b> → your project<br/>"
+                "2. Click the ⚙ gear → <b>Project settings</b><br/>"
+                "3. Open the <b>Service accounts</b> tab<br/>"
+                "4. Click <b>Generate new private key</b> and save the JSON<br/><br/>"
+                "This file grants admin access — keep it secret and never commit it to version control."
+            )
+            info_btn.setStyleSheet(
+                "QPushButton { background:#1e3a5f; color:#89b4fa; border:1px solid #89b4fa;"
+                "border-radius:5px; font-size:13px; font-weight:bold; padding:0; }"
+                "QPushButton:hover { background:#89b4fa; color:#1e1e2e; }"
+            )
+            info_btn.clicked.connect(self._show_credentials_help)
+            cred_row.addWidget(info_btn)
+            cred_row.addStretch()
+
+            self.dynamic_form.addRow("", cred_row)
 
         elif db_type == "ORM (SQLAlchemy)":
             self._add_field("Connection URL", "url", "sqlite:///path/to/db.db  or  postgresql://user:pass@host/db")
@@ -599,6 +680,35 @@ class ConnectionDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Select Service Account JSON", str(Path.home()), "JSON Files (*.json)")
         if path and "credentials_path" in self._fields:
             self._fields["credentials_path"].setText(path)
+
+    def _show_credentials_help(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Service Account JSON — Help")
+        msg.setTextFormat(Qt.RichText)
+        msg.setText(
+            "<b>How to obtain a Firebase Service Account JSON</b><br/><br/>"
+            "<ol>"
+            "<li>Open the <a href='https://console.firebase.google.com/'>Firebase Console</a> "
+            "and select your project.</li>"
+            "<li>Click the ⚙ <b>gear icon</b> next to <i>Project Overview</i> → "
+            "<b>Project settings</b>.</li>"
+            "<li>Navigate to the <b>Service accounts</b> tab.</li>"
+            "<li>Click <b>Generate new private key</b> and confirm.</li>"
+            "<li>Save the downloaded <code>.json</code> file somewhere secure "
+            "(e.g. outside your project repo).</li>"
+            "</ol>"
+            "<br/>"
+            "<b style='color:#f38ba8;'>⚠ Security notice:</b> This file grants full admin "
+            "access to your Firebase project. Never commit it to version control or share it publicly."
+        )
+        msg.setStyleSheet("""
+            QMessageBox { background: #1e1e2e; color: #cdd6f4; }
+            QLabel { color: #cdd6f4; font-size: 13px; }
+            QPushButton { background: #89b4fa; color: #1e1e2e; border-radius: 6px;
+                          padding: 5px 16px; font-weight: bold; }
+            QPushButton:hover { background: #b4befe; }
+        """)
+        msg.exec_()
 
     def get_data(self) -> dict:
         data = {
@@ -789,7 +899,7 @@ class DatabasePanel(QWidget):
 
         html_path = os.path.abspath('web/db_panel.html')
         self.database_view.load(QUrl.fromLocalFile(html_path))
-        print("called bd web")
+        
 
     # ──────────────────────────────────────────────────────────────────────────
     #  List building

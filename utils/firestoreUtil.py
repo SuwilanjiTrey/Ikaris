@@ -1,322 +1,465 @@
+"""
+firestoreUtil.py — Hybrid SQL ↔ Firestore query translator.
+
+Supports:
+  • Native Firestore path syntax  (e.g. "users", "users/abc123", "users/abc123/orders")
+  • SQL-style SELECT / INSERT / UPDATE / DELETE / COUNT with full WHERE / ORDER BY / LIMIT
+  • Optional parameters passed as a dict alongside the query string
+
+SQL syntax reference
+────────────────────
+SELECT  * | field1, field2  FROM collection [WHERE …] [ORDER BY field [ASC|DESC]] [LIMIT n]
+COUNT(*)                    FROM collection [WHERE …]
+INSERT  INTO collection (f1, f2, …) VALUES (v1, v2, …)
+UPDATE  collection SET f1=v1, f2=v2 WHERE …
+DELETE  FROM collection WHERE …
+
+Native Firestore path examples
+───────────────────────────────
+  users                         → list all docs in collection "users"
+  users/abc123                  → fetch single document  users/abc123
+  users/abc123/orders           → list sub-collection
+  users/abc123/orders/ord99     → fetch single sub-document
+
+WHERE operator support
+───────────────────────
+  =  ==  !=  >  <  >=  <=  IN  NOT IN  LIKE  ARRAY_CONTAINS  ARRAY_CONTAINS_ANY
+"""
+
+from __future__ import annotations
+import re
+from typing import Any
+
+
+# ── Operator mapping ──────────────────────────────────────────────────────────
+
+_SQL_TO_FS: dict[str, str] = {
+    "=":                  "==",
+    "==":                 "==",
+    "!=":                 "!=",
+    ">":                  ">",
+    "<":                  "<",
+    ">=":                 ">=",
+    "<=":                 "<=",
+    "IN":                 "in",
+    "NOTIN":              "not-in",
+    "NOT_IN":             "not-in",
+    "LIKE":               "array-contains",
+    "ARRAY_CONTAINS":     "array-contains",
+    "ARRAY_CONTAINS_ANY": "array-contains-any",
+}
+
+
+def _cast_value(raw: str) -> Any:
+    """Cast a raw string token to an appropriate Python type."""
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    low = stripped.lower()
+    if low == "null":
+        return None
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    if re.match(r"^-?\d+$", stripped):
+        return int(stripped)
+    if re.match(r"^-?\d+\.\d+$", stripped):
+        return float(stripped)
+    return stripped
+
+
+def _parse_value_token(token: str) -> Any:
+    """Strip surrounding quotes then cast."""
+    t = token.strip()
+    if (t.startswith('"') and t.endswith('"')) or \
+       (t.startswith("'") and t.endswith("'")):
+        return t[1:-1]
+    return _cast_value(t)
+
+
+def _parse_value_list(raw: str) -> list:
+    """Parse  (val1, val2, 'val3')  into a list of values."""
+    inner = raw.strip()
+    if inner.startswith("(") and inner.endswith(")"):
+        inner = inner[1:-1]
+    return [_parse_value_token(v) for v in _csv_split(inner)]
+
+
+def _csv_split(s: str) -> list:
+    """Split by comma, respecting single/double quotes."""
+    parts, current, in_q, q_char = [], [], False, None
+    for ch in s:
+        if in_q:
+            current.append(ch)
+            if ch == q_char:
+                in_q = False
+        elif ch in ('"', "'"):
+            in_q, q_char = True, ch
+            current.append(ch)
+        elif ch == ",":
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        parts.append("".join(current).strip())
+    return parts
+
+
+def _parse_where(where_str: str):
+    """
+    Parse a WHERE clause into [(field, fs_operator, value), …].
+    Returns a list on success, or a dict with 'error' key on failure.
+    Supports AND-chained conditions (Firestore does not support OR).
+    """
+    conditions = []
+    parts = re.split(r"\bAND\b", where_str, flags=re.IGNORECASE)
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # Multi-value: field IN (...) / NOT IN (...) / ARRAY_CONTAINS_ANY (...)
+        m = re.match(
+            r"(\w+)\s+(NOT\s+IN|IN|ARRAY_CONTAINS_ANY)\s*(\(.*?\))",
+            part, re.IGNORECASE | re.DOTALL
+        )
+        if m:
+            field, op, val_raw = m.groups()
+            op_key = re.sub(r"\s+", "_", op.upper().strip())
+            fs_op = _SQL_TO_FS.get(op_key, "in")
+            value = _parse_value_list(val_raw)
+            conditions.append((field, fs_op, value))
+            continue
+
+        # Single-value operators
+        m = re.match(
+            r"(\w+)\s*(==|!=|>=|<=|>|<|=|LIKE|ARRAY_CONTAINS)\s*"
+            r"(?:\"([^\"]*)\"|'([^']*)'|(\S+))",
+            part, re.IGNORECASE
+        )
+        if m:
+            field, op, dq_val, sq_val, raw_val = m.groups()
+            value = dq_val if dq_val is not None else (sq_val if sq_val is not None else raw_val)
+            op_key = op.upper().strip()
+            fs_op = _SQL_TO_FS.get(op_key, op)
+            conditions.append((field, fs_op, _cast_value(value)))
+            continue
+
+        return {"error": f"Unrecognised WHERE condition: '{part}'"}
+
+    return conditions
+
+
+def _parse_order_by(order_str: str) -> list:
+    order_by = []
+    for part in order_str.split(","):
+        part = part.strip()
+        if " " in part:
+            field, direction = part.rsplit(" ", 1)
+            direction = direction.upper() if direction.upper() in ("ASC", "DESC") else "ASC"
+        else:
+            field, direction = part, "ASC"
+        order_by.append((field.strip(), direction))
+    return order_by
+
+
+# ── Main translator class ─────────────────────────────────────────────────────
+
 class SQLToFirestoreTranslator:
     """
-    Translates SQL-like queries to Firestore queries with a focus on NoSQL patterns.
-    Simplified for Firestore's document-based structure.
+    Translates SQL-like queries OR native Firestore path strings into a
+    unified parameter dict consumed by FirestoreConnectionManager.
+
+    Return schema
+    ─────────────
+    {
+        'collection':       str,
+        'document_id':      str | None,   # targets a specific document
+        'subcollection':    str | None,
+        'sub_document_id':  str | None,
+        'operation':        str,          # select|insert|update|delete|count
+        'fields':           list[str],    # SELECT fields (empty = all)
+        'values':           list,         # INSERT values
+        'multi_insert':     list[list],   # multi-row INSERT
+        'set_conditions':   dict,         # UPDATE SET payload
+        'where_conditions': list[tuple],  # [(field, op, value), …]
+        'limit':            int,
+        'order_by':         list[tuple],  # [(field, 'ASC'|'DESC'), …]
+        'error':            str,          # only on failure
+    }
     """
-    
-    def __init__(self):
-        # SQL keywords to Firestore operations
-        self.operators = {
-            '=': '==',
-            '==': '==',
-            '>': '>',
-            '<': '<',
-            '>=': '>=',
-            '<=': '<=',
-            '!=': '!=',
-            'LIKE': 'array_contains',  # Simplified for array fields
-            'IN': 'in',
-            'NOT IN': 'not_in',
+
+    def translate(self, query: str, params: dict = None) -> dict:
+        """
+        Translate *query* and merge optional *params*.
+
+        params keys (all optional):
+          collection, document_id, subcollection, sub_document_id,
+          where (list of tuples), order_by (list of tuples),
+          limit (int), fields (list), set_conditions (dict), values (list)
+        """
+        query = (query or "").strip()
+        params = params or {}
+
+        if not query and not params:
+            return {"error": "Empty query"}
+
+        base = {
+            "collection":      params.get("collection", ""),
+            "document_id":     params.get("document_id"),
+            "subcollection":   params.get("subcollection"),
+            "sub_document_id": params.get("sub_document_id"),
+            "operation":       "select",
+            "fields":          list(params.get("fields") or []),
+            "values":          list(params.get("values") or []),
+            "multi_insert":    [],
+            "set_conditions":  dict(params.get("set_conditions") or {}),
+            "where_conditions": list(params.get("where") or []),
+            "limit":           int(params.get("limit", 100)),
+            "order_by":        list(params.get("order_by") or []),
         }
-    
-    def translate(self, query: str) -> dict:
+
+        # Native Firestore path (no SQL keyword at the start)
+        if query and not re.match(
+            r"^\s*(SELECT|INSERT|UPDATE|DELETE|COUNT)\b", query, re.IGNORECASE
+        ):
+            return self._parse_native_path(query, base)
+
+        # SQL path
+        if query:
+            parsed = self._parse_sql(query)
+            if "error" in parsed:
+                return parsed
+            # SQL fields win over params for overlapping keys
+            for k, v in parsed.items():
+                if v or k in ("operation", "limit"):
+                    base[k] = v
+
+        return base
+
+    # ── Native path ───────────────────────────────────────────────────────────
+
+    def _parse_native_path(self, path: str, base: dict) -> dict:
         """
-        Translate SQL query to Firestore query parameters.
-        
-        Returns:
-            dict: {
-                'collection': str,
-                'operation': str,  # 'select', 'insert', 'update', 'delete', 'count'
-                'fields': list,    # For SELECT (empty means all fields)
-                'where_conditions': list,  # List of (field, operator, value) tuples
-                'limit': int,
-                'order_by': list,  # List of (field, direction) tuples
-                'error': str       # If translation failed
-            }
+        Parse a Firestore-style path up to 4 segments deep:
+          users                      collection=users
+          users/abc123               + document_id=abc123
+          users/abc123/orders        + subcollection=orders
+          users/abc123/orders/ord99  + sub_document_id=ord99
         """
-        try:
-            # Normalize query
-            query = query.strip()
-            if not query:
-                return {'error': 'Empty query'}
-            
-            # Check if this is a Firestore native query (just collection name)
-            if not query.upper().startswith(('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'COUNT')):
-                # Assume this is a Firestore native query (collection path)
-                return {
-                    'collection': query.strip(),
-                    'operation': 'select',
-                    'fields': [],  # Empty means all fields
-                    'where_conditions': [],
-                    'limit': 100,
-                    'order_by': []
-                }
-            
-            # Parse SQL query
-            return self._parse_sql_query(query)
-            
-        except Exception as e:
-            return {'error': f'Query translation failed: {str(e)}'}
-    
-    def _parse_sql_query(self, query: str) -> dict:
-        """Parse SQL query and convert to Firestore format."""
-        import re
-        
-        # Convert to uppercase for parsing
-        upper_query = query.upper()
-        
-        # Extract operation
-        if upper_query.startswith('SELECT'):
+        segments = [s for s in path.strip("/").split("/") if s]
+        result = dict(base)
+        result["operation"] = "select"
+
+        n = len(segments)
+        if n == 1:
+            result["collection"] = segments[0]
+        elif n == 2:
+            result["collection"]  = segments[0]
+            result["document_id"] = segments[1]
+        elif n == 3:
+            result["collection"]    = segments[0]
+            result["document_id"]   = segments[1]
+            result["subcollection"] = segments[2]
+        elif n == 4:
+            result["collection"]      = segments[0]
+            result["document_id"]     = segments[1]
+            result["subcollection"]   = segments[2]
+            result["sub_document_id"] = segments[3]
+        else:
+            result["error"] = f"Path too deep (max 4 segments): '{path}'"
+
+        return result
+
+    # ── SQL dispatcher ────────────────────────────────────────────────────────
+
+    def _parse_sql(self, query: str) -> dict:
+        upper = query.upper().lstrip()
+        if upper.startswith("SELECT"):
             return self._parse_select(query)
-        elif upper_query.startswith('COUNT'):
+        if upper.startswith("COUNT"):
             return self._parse_count(query)
-        elif upper_query.startswith('INSERT'):
+        if upper.startswith("INSERT"):
             return self._parse_insert(query)
-        elif upper_query.startswith('UPDATE'):
+        if upper.startswith("UPDATE"):
             return self._parse_update(query)
-        elif upper_query.startswith('DELETE'):
+        if upper.startswith("DELETE"):
             return self._parse_delete(query)
-        else:
-            return {'error': 'Unsupported SQL operation. Use SELECT, COUNT, INSERT, UPDATE, or DELETE.'}
-    
+        return {"error": "Unsupported operation. Use SELECT, COUNT, INSERT, UPDATE, or DELETE."}
+
+    # ── SELECT ────────────────────────────────────────────────────────────────
+
     def _parse_select(self, query: str) -> dict:
-        """Parse SELECT statement."""
-        import re
-        
-        # Basic SELECT pattern: SELECT * FROM table [WHERE conditions] [LIMIT n] [ORDER BY field]
-        pattern = r'SELECT\s+\*\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*?))?(?:\s+LIMIT\s+(\d+))?(?:\s+ORDER\s+BY\s+(.*?))?$'
-        match = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
-        
-        if not match:
-            # Try pattern with specific fields
-            pattern = r'SELECT\s+(.*?)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*?))?(?:\s+LIMIT\s+(\d+))?(?:\s+ORDER\s+BY\s+(.*?))?$'
-            match = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
-            
-            if not match:
-                return {'error': 'Invalid SELECT syntax. Use: SELECT * FROM table [WHERE conditions] [LIMIT n] [ORDER BY field]'}
-            
-            fields_str, table, where_str, limit_str, order_str = match.groups()
-            
-            # Parse fields
-            fields = [f.strip() for f in fields_str.split(',') if f.strip()]
-        else:
-            table, where_str, limit_str, order_str = match.groups()
-            fields = []  # Empty means all fields
-        
-        # Parse WHERE conditions
+        pattern = (
+            r"SELECT\s+(.*?)\s+FROM\s+(\w+)"
+            r"(?:\s+WHERE\s+(.*?))?"
+            r"(?:\s+ORDER\s+BY\s+(.*?))?"
+            r"(?:\s+LIMIT\s+(\d+))?"
+            r"\s*;?\s*$"
+        )
+        m = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
+        if not m:
+            return {"error": "Invalid SELECT. Use: SELECT * FROM table [WHERE …] [ORDER BY …] [LIMIT n]"}
+
+        sel_raw, table, where_raw, order_raw, limit_raw = m.groups()
+        fields = [] if sel_raw.strip() == "*" else [f.strip() for f in sel_raw.split(",") if f.strip()]
+
         where_conditions = []
-        if where_str:
-            where_conditions = self._parse_where_clause(where_str)
-            if isinstance(where_conditions, dict) and 'error' in where_conditions:
-                return where_conditions
-        
-        # Parse LIMIT
-        limit = int(limit_str) if limit_str else 100
-        
-        # Parse ORDER BY
-        order_by = []
-        if order_str:
-            order_by = self._parse_order_by(order_str)
-        
+        if where_raw:
+            result = _parse_where(where_raw.strip())
+            if isinstance(result, dict):
+                return result
+            where_conditions = result
+
         return {
-            'collection': table,
-            'operation': 'select',
-            'fields': fields,
-            'where_conditions': where_conditions,
-            'limit': limit,
-            'order_by': order_by
+            "collection":      table,
+            "document_id":     None,
+            "subcollection":   None,
+            "sub_document_id": None,
+            "operation":       "select",
+            "fields":          fields,
+            "values":          [],
+            "multi_insert":    [],
+            "set_conditions":  {},
+            "where_conditions": where_conditions,
+            "limit":           int(limit_raw) if limit_raw else 100,
+            "order_by":        _parse_order_by(order_raw.strip()) if order_raw else [],
         }
-    
+
+    # ── COUNT ─────────────────────────────────────────────────────────────────
+
     def _parse_count(self, query: str) -> dict:
-        """Parse COUNT statement."""
-        import re
-        
-        # Basic COUNT pattern: COUNT(*) FROM table [WHERE conditions]
-        pattern = r'COUNT\(\*\)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*?))?$'
-        match = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
-        
-        if not match:
-            return {'error': 'Invalid COUNT syntax. Use: COUNT(*) FROM table [WHERE conditions]'}
-        
-        table, where_str = match.groups()
-        
-        # Parse WHERE conditions
+        pattern = r"COUNT\s*\(\s*\*\s*\)\s+FROM\s+(\w+)(?:\s+WHERE\s+(.*?))?\s*;?\s*$"
+        m = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
+        if not m:
+            return {"error": "Invalid COUNT. Use: COUNT(*) FROM table [WHERE …]"}
+
+        table, where_raw = m.groups()
         where_conditions = []
-        if where_str:
-            where_conditions = self._parse_where_clause(where_str)
-            if isinstance(where_conditions, dict) and 'error' in where_conditions:
-                return where_conditions
-        
+        if where_raw:
+            result = _parse_where(where_raw.strip())
+            if isinstance(result, dict):
+                return result
+            where_conditions = result
+
         return {
-            'collection': table,
-            'operation': 'count',
-            'where_conditions': where_conditions
+            "collection":      table,
+            "document_id":     None,
+            "subcollection":   None,
+            "sub_document_id": None,
+            "operation":       "count",
+            "fields":          [],
+            "values":          [],
+            "multi_insert":    [],
+            "set_conditions":  {},
+            "where_conditions": where_conditions,
+            "limit":           0,
+            "order_by":        [],
         }
-    
-    def _parse_where_clause(self, where_str: str) -> list:
-        """Parse WHERE clause into conditions."""
-        conditions = []
-        
-        # Split by AND (simplified - doesn't handle OR or parentheses)
-        parts = [part.strip() for part in where_str.split('AND')]
-        
-        for part in parts:
-            # Try to match condition: field operator value
-            import re
-            # Handle quoted strings
-            pattern = r'(\w+)\s*(=|==|>|<|>=|<=|!=|LIKE|IN|NOT\s+IN)\s*(?:"([^"]*)"|\'([^\']*)\'|(\S+))'
-            match = re.match(pattern, part, re.IGNORECASE)
-            
-            if match:
-                field, operator, quoted_val, single_val, unquoted_val = match.groups()
-                value = quoted_val or single_val or unquoted_val
-                
-                # Convert value to appropriate type
-                if value.lower() in ('true', 'false'):
-                    value = value.lower() == 'true'
-                elif value.isdigit():
-                    value = int(value)
-                elif re.match(r'^\d+\.\d+$', value):
-                    value = float(value)
-                
-                # Convert operator
-                operator = operator.replace(' ', '')
-                if operator in self.operators:
-                    operator = self.operators[operator]
-                
-                conditions.append((field, operator, value))
-            else:
-                return {'error': f'Invalid WHERE condition: {part}'}
-        
-        return conditions
-    
-    def _parse_order_by(self, order_str: str) -> list:
-        """Parse ORDER BY clause."""
-        order_by = []
-        parts = [part.strip() for part in order_str.split(',')]
-        
-        for part in parts:
-            if ' ' in part:
-                field, direction = part.rsplit(' ', 1)
-                direction = direction.upper()
-                if direction not in ('ASC', 'DESC'):
-                    direction = 'ASC'
-            else:
-                field = part
-                direction = 'ASC'
-            
-            order_by.append((field.strip(), direction))
-        
-        return order_by
-    
+
+    # ── INSERT ────────────────────────────────────────────────────────────────
+
     def _parse_insert(self, query: str) -> dict:
-        """Parse INSERT statement."""
-        import re
-        
-        # Basic INSERT pattern: INSERT INTO table (field1, field2) VALUES (value1, value2)
-        pattern = r'INSERT\s+INTO\s+(\w+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)'
-        match = re.match(pattern, query, re.IGNORECASE)
-        
-        if not match:
-            return {'error': 'Invalid INSERT syntax. Use: INSERT INTO table (field1, field2) VALUES (value1, value2)'}
-        
-        table, fields_str, values_str = match.groups()
-        fields = [f.strip() for f in fields_str.split(',')]
-        values = []
-        
-        # Parse values (handle quoted strings)
-        value_pattern = r'"([^"]*)"|\'([^\']*)\'|(\S+)'
-        for val_match in re.finditer(value_pattern, values_str):
-            quoted_val, single_val, unquoted_val = val_match.groups()
-            value = quoted_val or single_val or unquoted_val
-            
-            # Convert to appropriate type
-            if value.lower() in ('true', 'false'):
-                value = value.lower() == 'true'
-            elif value.isdigit():
-                value = int(value)
-            elif re.match(r'^\d+\.\d+$', value):
-                value = float(value)
-            
-            values.append(value)
-        
-        if len(fields) != len(values):
-            return {'error': 'Number of fields and values must match in INSERT statement'}
-        
+        pattern = (
+            r"INSERT\s+INTO\s+(\w+)\s*"
+            r"\((.*?)\)\s*VALUES\s*((?:\s*\(.*?\)\s*,?\s*)+)"
+        )
+        m = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
+        if not m:
+            return {"error": "Invalid INSERT. Use: INSERT INTO table (f1, f2) VALUES (v1, v2)"}
+
+        table, fields_raw, values_block = m.groups()
+        fields = [f.strip() for f in _csv_split(fields_raw)]
+
+        value_groups = re.findall(r"\((.*?)\)", values_block, re.DOTALL)
+        all_rows = []
+        for grp in value_groups:
+            row = [_parse_value_token(v) for v in _csv_split(grp)]
+            if len(row) != len(fields):
+                return {"error": f"Field/value count mismatch: {len(fields)} fields vs {len(row)} values."}
+            all_rows.append(row)
+
+        if not all_rows:
+            return {"error": "No VALUES found in INSERT statement."}
+
         return {
-            'collection': table,
-            'operation': 'insert',
-            'fields': fields,
-            'values': values
+            "collection":      table,
+            "document_id":     None,
+            "subcollection":   None,
+            "sub_document_id": None,
+            "operation":       "insert",
+            "fields":          fields,
+            "values":          all_rows[0] if len(all_rows) == 1 else all_rows,
+            "multi_insert":    all_rows,
+            "set_conditions":  {},
+            "where_conditions": [],
+            "limit":           0,
+            "order_by":        [],
         }
-    
+
+    # ── UPDATE ────────────────────────────────────────────────────────────────
+
     def _parse_update(self, query: str) -> dict:
-        """Parse UPDATE statement."""
-        import re
-        
-        # Basic UPDATE pattern: UPDATE table SET field1=value1, field2=value2 WHERE condition
-        pattern = r'UPDATE\s+(\w+)\s+SET\s+(.*?)\s+WHERE\s+(.*)'
-        match = re.match(pattern, query, re.IGNORECASE)
-        
-        if not match:
-            return {'error': 'Invalid UPDATE syntax. Use: UPDATE table SET field1=value1, field2=value2 WHERE condition'}
-        
-        table, set_str, where_str = match.groups()
-        
-        # Parse SET clause
+        pattern = r"UPDATE\s+(\w+)\s+SET\s+(.*?)\s+WHERE\s+(.*?)\s*;?\s*$"
+        m = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
+        if not m:
+            return {"error": "Invalid UPDATE. Use: UPDATE table SET f1=v1 WHERE condition"}
+
+        table, set_raw, where_raw = m.groups()
+
         set_conditions = {}
-        for set_part in set_str.split(','):
-            if '=' in set_part:
-                field, value = set_part.split('=', 1)
-                field = field.strip()
-                value = value.strip()
-                
-                # Parse value (handle quoted strings)
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
-                    value = value[1:-1]
-                elif value.lower() in ('true', 'false'):
-                    value = value.lower() == 'true'
-                elif value.isdigit():
-                    value = int(value)
-                elif re.match(r'^\d+\.\d+$', value):
-                    value = float(value)
-                
-                set_conditions[field] = value
-        
-        # Parse WHERE clause
-        where_conditions = self._parse_where_clause(where_str)
-        if isinstance(where_conditions, dict) and 'error' in where_conditions:
-            return where_conditions
-        
+        for part in _csv_split(set_raw):
+            if "=" not in part:
+                return {"error": f"Invalid SET clause: '{part}'"}
+            key, _, val_raw = part.partition("=")
+            set_conditions[key.strip()] = _parse_value_token(val_raw.strip())
+
+        result = _parse_where(where_raw.strip())
+        if isinstance(result, dict):
+            return result
+
         return {
-            'collection': table,
-            'operation': 'update',
-            'set_conditions': set_conditions,
-            'where_conditions': where_conditions
+            "collection":      table,
+            "document_id":     None,
+            "subcollection":   None,
+            "sub_document_id": None,
+            "operation":       "update",
+            "fields":          [],
+            "values":          [],
+            "multi_insert":    [],
+            "set_conditions":  set_conditions,
+            "where_conditions": result,
+            "limit":           0,
+            "order_by":        [],
         }
-    
+
+    # ── DELETE ────────────────────────────────────────────────────────────────
+
     def _parse_delete(self, query: str) -> dict:
-        """Parse DELETE statement."""
-        import re
-        
-        # Basic DELETE pattern: DELETE FROM table WHERE condition
-        pattern = r'DELETE\s+FROM\s+(\w+)\s+WHERE\s+(.*)'
-        match = re.match(pattern, query, re.IGNORECASE)
-        
-        if not match:
-            return {'error': 'Invalid DELETE syntax. Use: DELETE FROM table WHERE condition'}
-        
-        table, where_str = match.groups()
-        
-        # Parse WHERE clause
-        where_conditions = self._parse_where_clause(where_str)
-        if isinstance(where_conditions, dict) and 'error' in where_conditions:
-            return where_conditions
-        
+        pattern = r"DELETE\s+FROM\s+(\w+)\s+WHERE\s+(.*?)\s*;?\s*$"
+        m = re.match(pattern, query, re.IGNORECASE | re.DOTALL)
+        if not m:
+            return {"error": "Invalid DELETE. Use: DELETE FROM table WHERE condition"}
+
+        table, where_raw = m.groups()
+        result = _parse_where(where_raw.strip())
+        if isinstance(result, dict):
+            return result
+
         return {
-            'collection': table,
-            'operation': 'delete',
-            'where_conditions': where_conditions
+            "collection":      table,
+            "document_id":     None,
+            "subcollection":   None,
+            "sub_document_id": None,
+            "operation":       "delete",
+            "fields":          [],
+            "values":          [],
+            "multi_insert":    [],
+            "set_conditions":  {},
+            "where_conditions": result,
+            "limit":           0,
+            "order_by":        [],
         }

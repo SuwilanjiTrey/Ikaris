@@ -308,7 +308,7 @@
 
 <!-- ── HOME ─────────────────────────────────────────────────────────────────── -->
 <div id="home-screen">
-  <div class="db-logo">🗄</div>
+  <div class="db-logo"><img src="images/dbIcons/sqlite.png" width="36" height="36" style="object-fit:contain;filter:brightness(0) invert(1);opacity:.85;" onerror="this.outerHTML='🗄'"></div>
   <h2>Database Explorer</h2>
   <p>Select a connection from the sidebar, or add a new one to get started.</p>
   <button class="pill-btn primary" onclick="bridgeCall('add')">＋ New Connection</button>
@@ -356,6 +356,26 @@
 
   <!-- Query Editor -->
   <div class="tab-content" id="tab-query">
+    <div id="firestore-hint" style="display:none;
+      background:linear-gradient(90deg,#1a2535,#1a1a35);
+      border-bottom:1px solid #3a3a5a; padding:8px 14px; font-size:11px;
+      color:var(--subtext); line-height:1.7; flex-shrink:0;">
+      <strong style="color:var(--blue);">Firestore Hybrid Query Mode</strong>
+      &nbsp;—&nbsp;
+      <span style="color:var(--muted);">Native path:</span>
+      <code style="color:var(--teal);">users</code> &nbsp;·&nbsp;
+      <code style="color:var(--teal);">users/docId</code> &nbsp;·&nbsp;
+      <code style="color:var(--teal);">users/docId/orders</code>
+      &nbsp;&nbsp;|&nbsp;&nbsp;
+      <span style="color:var(--muted);">SQL:</span>
+      <code style="color:var(--peach);">SELECT * FROM users WHERE age &gt; 18 ORDER BY name LIMIT 50</code>
+      &nbsp;·&nbsp;
+      <code style="color:var(--peach);">INSERT INTO users (name, age) VALUES ("Alice", 30)</code>
+      &nbsp;·&nbsp;
+      <code style="color:var(--peach);">UPDATE users SET active=true WHERE role = "admin"</code>
+      &nbsp;·&nbsp;
+      <code style="color:var(--peach);">DELETE FROM users WHERE active = false</code>
+    </div>
     <div class="query-editor-wrap">
       <textarea class="query-editor" id="query-input" placeholder="SELECT * FROM my_table LIMIT 100;
 
@@ -383,7 +403,7 @@
   <!-- Firestore tab -->
   <div class="tab-content" id="tab-firestore">
     <div class="firestore-notice">
-      <div class="fs-icon">🔥</div>
+      <div class="fs-icon"><img src="images/dbIcons/firebase.png" width="44" height="44" style="object-fit:contain;" onerror="this.outerHTML='🔥'"></div>
       <h3>Firestore Integration</h3>
       <p>
         This panel lets you reference and coordinate your Firestore implementation.<br/>
@@ -495,7 +515,7 @@ window.showConnection = function(conn) {
   // Populate topbar
   document.getElementById('conn-name').textContent = conn.name || '—';
   document.getElementById('conn-type-label').textContent = conn.db_type || '';
-  document.getElementById('conn-type-icon').textContent = dbTypeIcon(conn.db_type);
+  document.getElementById('conn-type-icon').innerHTML = dbTypeIconHtml(conn.db_type, 18);
 
   // Status
   updateStatusBadge(conn.status || 'disconnected');
@@ -503,6 +523,15 @@ window.showConnection = function(conn) {
   // Show/hide firestore tab
   var fsTab = document.getElementById('firestore-tab');
   fsTab.style.display = (conn.db_type === 'Firestore') ? 'block' : 'none';
+
+  // Show/hide Firestore hybrid hint bar + update placeholder
+  var hintBar   = document.getElementById('firestore-hint');
+  var queryArea = document.getElementById('query-input');
+  var isFs = (conn.db_type === 'Firestore');
+  hintBar.style.display = isFs ? 'block' : 'none';
+  queryArea.placeholder = isFs
+    ? 'Native: users\n       users/docId\n       users/docId/orders\n\nSQL:    SELECT * FROM users WHERE status = "active" ORDER BY name LIMIT 50\n        INSERT INTO users (name, role) VALUES ("Alice", "admin")\n        UPDATE users SET active=true WHERE role = "admin"\n        DELETE FROM users WHERE active = false\n\n-- Tip: highlight a portion to run only that section'
+    : 'SELECT * FROM my_table LIMIT 100;\n\n-- Tip: highlight a portion to run only that section';
 
   // Populate info tab
   populateInfo(conn);
@@ -606,7 +635,10 @@ window.onSchemaResults = function(schema) {
   schema.tables.forEach(function(tbl) {
     var div = document.createElement('div');
     div.className = 'schema-table-item';
-    div.innerHTML = '<span class="tbl-icon">▤</span>'
+    var tblIcon = (_currentConn && DB_ICON_PATHS[_currentConn.db_type])
+      ? '<img src="' + DB_ICON_PATHS[_currentConn.db_type] + '" width="16" height="16" style="object-fit:contain;vertical-align:middle;" onerror="this.outerHTML=\'▤\'">'
+      : '▤';
+    div.innerHTML = '<span class="tbl-icon">' + tblIcon + '</span>'
       + '<span class="tbl-name">' + tbl + '</span>'
       + '<span class="tbl-meta">table</span>';
     div.onclick = function() {
@@ -749,10 +781,32 @@ function showResultError(msg) {
 function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function dbTypeIcon(t) {
-  return { 'SQLite':'🗃', 'SQL (PostgreSQL)':'🐘', 'SQL (MySQL)':'🐬',
-           'MSSQL':'🏢', 'Firestore':'🔥', 'ORM (SQLAlchemy)':'⚙' }[t] || '🗄';
+var DB_ICON_PATHS = {
+  'SQLite':           '../images/fileIcons/sqlite.png',
+  'SQL (PostgreSQL)': '../images/fileIcons/postgressql.webp',
+  'SQL (MySQL)':      '../images/fileIcons/mysql1.png',
+  'MSSQL':            '../images/fileIcons/mssql.png',
+  'Firestore':        '../images/fileIcons/firebase.png',
+  'ORM (SQLAlchemy)': '../images/fileIcons/orm.png',
+};
+var DB_ICON_FALLBACK = {
+  'SQLite':'\u{1F5C3}', 'SQL (PostgreSQL)':'\u{1F418}', 'SQL (MySQL)':'\u{1F42C}',
+  'MSSQL':'\u{1F3E2}', 'Firestore':'\u{1F525}', 'ORM (SQLAlchemy)':'\u2699'
+};
+
+function dbTypeIconHtml(t, size) {
+  size = size || 18;
+  var path = DB_ICON_PATHS[t];
+  var fb = DB_ICON_FALLBACK[t] || '\u{1F5C4}';
+  if (path) {
+    return '<img src="' + path + '" width="' + size + '" height="' + size + '" '
+         + 'style="object-fit:contain;vertical-align:middle;" '
+         + 'onerror="this.outerHTML=\'' + fb + '\'">'; 
+  }
+  return fb;
 }
+/* keep legacy scalar version for any remaining callers */
+function dbTypeIcon(t) { return DB_ICON_FALLBACK [t]|| '\u{1F5C4}'; }
 function statusColor(s) {
   return { connected:'green', disconnected:'muted', error:'red' }[s] || 'muted';
 }

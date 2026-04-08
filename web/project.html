@@ -64,7 +64,19 @@
     gap: 8px;
     overflow-y: auto;
     flex-shrink: 0;
+    /* Improved scrolling */
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
   }
+  .sidebar::-webkit-scrollbar{ width:8px; }
+  .sidebar::-webkit-scrollbar-track{ background:var(--surface); }
+  .sidebar::-webkit-scrollbar-thumb{ 
+    background:var(--surface2); 
+    border-radius:4px;
+  }
+  .sidebar::-webkit-scrollbar-thumb:hover{ background:var(--border); }
+  
   .sidebar-label {
     font-size: .68rem;
     font-weight: 700;
@@ -125,7 +137,19 @@
     flex: 1;
     padding: 22px 28px;
     overflow-y: auto;
+    /* Improved scrolling */
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
   }
+  .config::-webkit-scrollbar{ width:8px; }
+  .config::-webkit-scrollbar-track{ background:var(--bg); }
+  .config::-webkit-scrollbar-thumb{ 
+    background:var(--surface2); 
+    border-radius:4px;
+  }
+  .config::-webkit-scrollbar-thumb:hover{ background:var(--border); }
+  
   .config h2 { font-size: .95rem; font-weight: 600; margin-bottom: 18px; }
 
   .field { margin-bottom: 14px; }
@@ -196,6 +220,34 @@
   }
   .check-row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 
+  /* ── Progress bar ── */
+  .progress-container {
+    margin: 16px 28px 8px;
+    display: none;
+  }
+  .progress-container.visible {
+    display: block;
+  }
+  .progress-label {
+    font-size: .78rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .progress-bar {
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
   /* ── Log console ── */
   .console-wrap {
     border-top: 1px solid var(--border);
@@ -223,7 +275,19 @@
     font-size: .76rem;
     line-height: 1.5;
     color: #a0ffa0;
+    /* Improved scrolling */
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
   }
+  #console::-webkit-scrollbar{ width:6px; }
+  #console::-webkit-scrollbar-track{ background:#0a0a0f; }
+  #console::-webkit-scrollbar-thumb{ 
+    background:var(--surface2); 
+    border-radius:3px;
+  }
+  #console::-webkit-scrollbar-thumb:hover{ background:var(--border); }
+  
   .log-err  { color: var(--error); }
   .log-warn { color: var(--warn); }
   .log-info { color: var(--muted); }
@@ -253,6 +317,8 @@
   .btn-primary:hover { opacity: .88; }
   .btn-secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
   .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger { background: var(--error); color: #fff; }
+  .btn-danger:hover { opacity: .88; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
 
   /* spinner */
@@ -286,11 +352,11 @@
 
     <button class="type-btn active" data-type="python" onclick="selectType(this)">
       <div class="icon">
-	<img 
-	src="../images/fileIcons/python.png"
-	alt="python icon"
-	>
-	</div>
+    <img 
+    src="../images/fileIcons/python.png"
+    alt="python icon"
+    >
+    </div>
       <div>
         <div class="label">Python</div>
         <div class="sub">Django · Flask</div>
@@ -299,11 +365,11 @@
 
     <button class="type-btn" data-type="java" onclick="selectType(this)">
       <div class="icon">
-	<img 
-	src="../images/fileIcons/java.png"
-	alt="java icon"
-	>
-	</div>
+    <img 
+    src="../images/fileIcons/java.png"
+    alt="java icon"
+    >
+    </div>
       <div>
         <div class="label">Java</div>
         <div class="sub">Spring Boot + Maven</div>
@@ -312,11 +378,11 @@
 
     <button class="type-btn" data-type="android" onclick="selectType(this)">
       <div class="icon">
-	<img 
-	src="../images/fileIcons/android.png"
-	alt="android icon"
-	>
-	</div>
+    <img 
+    src="../images/fileIcons/android.png"
+    alt="android icon"
+    >
+    </div>
       <div>
         <div class="label">Android</div>
         <div class="sub">React Native + Expo</div>
@@ -325,11 +391,11 @@
 
     <button class="type-btn" data-type="web" onclick="selectType(this)">
       <div class="icon">
-	<img 
-	src="../images/fileIcons/react.png"
-	alt="react icon"
-	>
-	</div>
+    <img 
+    src="../images/fileIcons/react.png"
+    alt="react icon"
+    >
+    </div>
       <div>
         <div class="label">Web</div>
         <div class="sub">React · Vite · Next.js</div>
@@ -360,6 +426,17 @@
       <div id="type-options"></div>
     </div>
 
+    <!-- Progress bar -->
+    <div class="progress-container" id="progress-container">
+      <div class="progress-label">
+        <span id="progress-text">Initializing...</span>
+        <span id="progress-percent">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
     <!-- Console -->
     <div class="console-wrap">
       <div class="console-header">
@@ -374,6 +451,7 @@
 
 <!-- Footer -->
 <div class="footer">
+  <button class="btn btn-secondary" id="cancel-btn" onclick="cancelOperation()" style="display:none;">Cancel</button>
   <button class="btn btn-secondary" onclick="window.close ? window.close() : log('Close not available in embedded mode','warn')">Cancel</button>
   <button class="btn btn-primary" id="create-btn" onclick="createProject()">
     <span class="spinner"></span>
@@ -389,6 +467,7 @@
 // ── State ────────────────────────────────────────────────────────────────────
 let bridge = null;
 let currentType = 'python';
+let operationInProgress = false;
 const $ = id => document.getElementById(id);
 
 // ── WebChannel init ──────────────────────────────────────────────────────────
@@ -399,12 +478,19 @@ new QWebChannel(qt.webChannelTransport, ch => {
   bridge.project_created.connect(path => {
     log(`✅  Project ready at: ${path}`, 'success');
     setBusy(false);
+    hideProgress();
     // Notify parent window (main editor) to update directory
     if (typeof onProjectCreated === 'function') onProjectCreated(path);
   });
   bridge.creation_failed.connect(msg => {
     log(`❌  ${msg}`, 'err');
     setBusy(false);
+    hideProgress();
+  });
+
+  // Connect progress updates
+  bridge.progress_updated.connect((percent, message) => {
+    updateProgress(percent, message);
   });
 
   log('Ready.', 'info');
@@ -443,6 +529,40 @@ const TYPE_OPTIONS = {
           <option value="11">Java 11 (LTS)</option>
         </select>
       </div>
+      <div class="field">
+      
+	<div class="sub-options">
+	  <h3>Framework</h3>
+	  <div class="chip-group">
+		<button class="chip active" data-key="java_framework" data-val="spring" onclick="pickChip(this)">Spring Boot</button>
+		<button class="chip" data-key="java_framework" data-val="vaadin" onclick="pickChip(this)">Vaadin</button>
+	  </div>
+	</div>
+
+		  
+	  <label>Build Tool</label>
+	  <select id="java-build">
+		<option value="maven">Maven</option>
+		<option value="gradle">Gradle</option>
+	  </select>
+	</div>
+
+	<div class="field">
+	  <label>Language</label>
+	  <select id="java-lang">
+		<option value="java">Java</option>
+		<option value="kotlin">Kotlin</option>
+	  </select>
+	</div>
+
+	<div class="field">
+	  <label>Packaging</label>
+	  <select id="java-packaging">
+		<option value="jar">JAR</option>
+		<option value="war">WAR</option>
+	  </select>
+	</div>
+
       <div class="field">
         <label>Dependencies (comma-separated Spring IDs)</label>
         <input id="java-deps" type="text" value="web" placeholder="web,data-jpa,security"/>
@@ -503,6 +623,33 @@ function getChipValue(key, fallback) {
   return active ? active.dataset.val : fallback;
 }
 
+// ── Progress bar functions ─────────────────────────────────────────────────────
+function showProgress() {
+  $('progress-container').classList.add('visible');
+}
+
+function hideProgress() {
+  $('progress-container').classList.remove('visible');
+}
+
+function updateProgress(percent, message) {
+  if (!$('progress-container').classList.contains('visible')) {
+    showProgress();
+  }
+  
+  $('progress-text').textContent = message;
+  $('progress-percent').textContent = percent + '%';
+  $('progress-fill').style.width = percent + '%';
+}
+
+// ── Cancel operation ─────────────────────────────────────────────────────────
+function cancelOperation() {
+  if (bridge && operationInProgress) {
+    bridge.cancel_operation();
+    log('Cancelling operation...', 'warn');
+  }
+}
+
 // ── Browse directory ─────────────────────────────────────────────────────────
 async function browseDir() {
   if (!bridge) return;
@@ -528,6 +675,12 @@ function createProject() {
     cfg.group_id    = ($('java-group')   || { value: 'com.example' }).value.trim();
     cfg.java_version= ($('java-version') || { value: '17'          }).value;
     cfg.dependencies= ($('java-deps')    || { value: 'web'         }).value.trim();
+    cfg.java_framework = getChipValue('java_framework', 'spring');
+    cfg.build_tool = ($('java-build') || {}).value || 'maven';
+	cfg.language   = ($('java-lang') || {}).value || 'java';
+	cfg.packaging  = ($('java-packaging') || {}).value || 'jar';
+	
+
 
   } else if (currentType === 'android') {
     cfg.bare_workflow = ($('android-bare') || {}).checked || false;
@@ -539,6 +692,8 @@ function createProject() {
   }
 
   setBusy(true);
+  showProgress();
+  updateProgress(0, 'Initializing...');
   log(`Creating ${currentType} project "${name}" …`, 'info');
   bridge.create_project(JSON.stringify(cfg));
 }
@@ -557,8 +712,16 @@ function clearConsole() { $('console').innerHTML = ''; }
 
 function setBusy(busy) {
   const btn = $('create-btn');
-  if (busy) btn.classList.add('busy');
-  else      btn.classList.remove('busy');
+  const cancelBtn = $('cancel-btn');
+  if (busy) {
+    btn.classList.add('busy');
+    cancelBtn.style.display = 'inline-block';
+    operationInProgress = true;
+  } else {
+    btn.classList.remove('busy');
+    cancelBtn.style.display = 'none';
+    operationInProgress = false;
+  }
   btn.disabled = busy;
 }
 
