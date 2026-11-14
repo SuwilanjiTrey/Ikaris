@@ -1,6 +1,5 @@
 altgraph                  
-anyio                     
-audioop-lts               
+anyio                                
 blinker                   
 CacheControl              
 certifi                   
@@ -64,4 +63,5 @@ standard-aifc
 standard-chunk            
 typing_extensions         
 urllib3                   
-Werkzeug                  
+Werkzeug   
+termios               

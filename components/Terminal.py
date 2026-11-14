@@ -1,35 +1,58 @@
 """
-terminal.py  —  Embedded terminal widget for Ikaris Dev Studio
-──────────────────────────────────────────────────────────────
-• Real PTY-backed shell (bash)  — proper interactive programs work
-• ANSI / VT100 colour + style parsing
-• Tab bar with  [+]  button to open new terminals
-• Closing the last tab hides the container rather than leaving a blank panel
-• Drop-in: instantiate  TerminalManager(container, layout)  and call
-  terminal_manager.toggle()  from your sidebar button / shortcut.
+terminal_windows.py  —  Embedded terminal widget for Ikaris Dev Studio (Windows)
+─────────────────────────────────────────────────────────────────────────────
+Windows port of terminal.py.
+
+WHY THIS ISN'T A DROP-IN PORT
+──────────────────────────────
+The original relied on a real Unix PTY (`pty.openpty` + `termios`/`fcntl` +
+`os.fork`). Windows has no equivalent without the ConPTY API, which QProcess
+does not expose. This version hosts `cmd.exe` as a plain QProcess with its
+stdin/stdout connected via pipes instead of a pseudo-terminal. Concretely,
+that changes behaviour in a few ways worth knowing before you rely on this:
+
+  • No real console  →  full-screen / curses-style programs (vim, less,
+    htop-alikes, etc.) will not render correctly. This is a line-oriented
+    shell, not a general terminal emulator.
+  • No kernel echo  →  a PTY echoes typed input back to you; a piped
+    cmd.exe does not. So the widget itself is now the source of truth for
+    what's on screen while you type — the full line is only sent to the
+    process on Enter. (This actually removes the old `_echo_suppress` hack
+    entirely — nothing to suppress anymore.)
+  • No console-attached line editing  →  cmd.exe's own arrow-key history
+    and Tab completion only work when it owns a real console. Over a pipe
+    they're inert, so Ctrl+A/E/U/W, Tab, and history are now handled
+    locally in the widget instead of being forwarded as control bytes.
+  • No SIGINT byte  →  Windows delivers interrupts via console control
+    events, not a stream byte. Ctrl+C is implemented as a best-effort
+    AttachConsole + GenerateConsoleCtrlEvent call (see `_send_ctrl_c`).
+    It can fail silently against processes that install their own
+    handler — there is no fully reliable PTY-style SIGINT without ConPTY.
+  • No TIOCSWINSZ  →  there's no real resize signal to deliver, so the
+    old resize-debounce/redraw-swallowing logic is gone. Font metrics
+    still drive local wrapping; the child process just never finds out
+    the "window" changed size.
+  • EOF is Ctrl+Z, not Ctrl+D  →  Windows' console EOF marker is 0x1A.
+
+Everything else (ANSI parsing, the tab bar, the manager) is unchanged in
+spirit and still Windows-safe as-is.
 """
 
-import os
+import sys
+import ctypes
 import re
-import pty
-import fcntl
-import termios
-import struct
-import signal
-import shutil
 from pathlib import Path
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-    QLineEdit, QPushButton, QTabWidget, QTabBar,
+    QPushButton, QTabWidget, QTabBar,
     QLabel, QApplication, QSizePolicy,
 )
 from PyQt5.QtGui import (
     QFont, QColor, QTextCharFormat, QTextCursor,
-    QKeySequence,
 )
 from PyQt5.QtCore import (
-    Qt, QThread, pyqtSignal, QTimer, QObject,
+    Qt, QTimer, QObject, QProcess, QProcessEnvironment, pyqtSignal,
 )
 
 
@@ -52,37 +75,72 @@ _DEFAULT_FG = "#E0E0E0"
 _DEFAULT_BG = "transparent"
 
 
-# ── PTY reader thread ─────────────────────────────────────────────────────────
-class _PtyReader(QThread):
-    """Reads raw bytes from the pty master fd and emits them as chunks."""
-    data_ready = pyqtSignal(bytes)
-    finished   = pyqtSignal()
+# ── Windows console-signal plumbing ──────────────────────────────────────────
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+CREATE_NO_WINDOW         = 0x08000000
+CTRL_C_EVENT             = 0
 
-    def __init__(self, master_fd: int):
-        super().__init__()
-        self._fd     = master_fd
-        self._active = True
 
-    def run(self):
-        import select
-        while self._active:
-            try:
-                r, _, _ = select.select([self._fd], [], [], 0.05)
-                if r:
-                    chunk = os.read(self._fd, 4096)
-                    if chunk:
-                        self.data_ready.emit(chunk)
-                    else:
-                        break
-            except OSError:
-                break
-        self.finished.emit()
+def _configure_windows_process(process: QProcess):
+    """
+    Give the child its own hidden console + process group.
 
-    def stop(self):
-        self._active = False
+    CREATE_NEW_PROCESS_GROUP is required so GenerateConsoleCtrlEvent can
+    target just this child (and its descendants) rather than every console
+    process attached to whatever console we happen to be near.
+    CREATE_NO_WINDOW stops a visible console window from flashing up, since
+    a plain console-subsystem child would otherwise get one automatically
+    when its parent (this GUI app) has no console of its own.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        def modifier(args):
+            args.flags |= CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+        process.setCreateProcessArgumentsModifier(modifier)
+    except AttributeError:
+        # Older PyQt5/Qt without this hook — Ctrl+C simply won't work below.
+        pass
+
+
+def _send_ctrl_c(pid: int) -> bool:
+    """
+    Best-effort SIGINT-equivalent for a Windows console process.
+
+    There is no byte we can write to stdin that means "interrupt" on
+    Windows the way 0x03 does on a Unix PTY — control events are delivered
+    to whole console process groups via GenerateConsoleCtrlEvent, and only
+    a process attached to that console can raise one. So: detach from
+    whatever console we have (none, normally), attach to the child's
+    console, fire the event at its process group, then detach again.
+
+    Not guaranteed to work — a process that installed its own
+    SetConsoleCtrlHandler can swallow it, and some processes never
+    respond to it at all. That's an inherent Windows limitation, not a
+    bug in this code.
+    """
+    if sys.platform != "win32":
+        return False
+    kernel32 = ctypes.windll.kernel32
+    kernel32.FreeConsole()
+    if not kernel32.AttachConsole(pid):
+        return False
+    try:
+        # Ignore the event in our own process, or the IDE itself would
+        # also receive and act on the Ctrl+C we're about to generate.
+        kernel32.SetConsoleCtrlHandler(None, True)
+        kernel32.GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0)
+        return True
+    finally:
+        kernel32.FreeConsole()
+        kernel32.SetConsoleCtrlHandler(None, False)
 
 
 # ── ANSI escape sequence parser ───────────────────────────────────────────────
+# Unchanged from the Unix version — some Windows console programs (git,
+# npm, modern PowerShell-aware tools, etc.) still emit ANSI/VT sequences
+# even over a redirected pipe, others fall back to plain text when they
+# detect stdout isn't a real console. Either way this is harmless to keep.
 _ESC_RE = re.compile(
     r'\x1b'
     r'(?:'
@@ -241,27 +299,24 @@ def _256_color(idx: int) -> str:
     return f"#{v:02x}{v:02x}{v:02x}"
 
 
-# This is the replacement TerminalPane class + TerminalDisplay helper.
-# Everything from line 244 to line 535 in terminal.py gets replaced with this.
-
+# ── the input/output surface ─────────────────────────────────────────────────
 class TerminalDisplay(QTextEdit):
     """
     A QTextEdit that acts as both the output display AND the input surface.
-    - Output from the PTY is appended at the end
-    - The user types after the last output position (_input_anchor)
-    - Ctrl+C, Ctrl+D, Ctrl+L, Tab, arrows all send bytes directly to the PTY
-    - Selection + copy works normally (mouse drag / Ctrl+Shift+C or Ctrl+C
-      when text is selected)
-    - Paste sends clipboard text straight to the PTY
+
+    Because a piped cmd.exe doesn't echo or line-edit for us, everything
+    the user types lives locally in this widget until Enter sends the
+    whole line. Ctrl+A/E/U/W move or delete within that local buffer
+    instead of being forwarded as control bytes.
     """
 
     # signals to the owning TerminalPane
-    char_written  = pyqtSignal(bytes)   # user typed something → write to pty
-    # sigint_req removed: Ctrl+C now writes \x03 directly via char_written
+    line_submitted      = pyqtSignal(bytes)  # full line + terminator → stdin
+    interrupt_requested = pyqtSignal()       # Ctrl+C with no selection
 
     def __init__(self):
         super().__init__()
-        self.setFont(QFont("Monospace", 11))
+        self.setFont(QFont("Consolas", 11))
         self.setStyleSheet("""
             QTextEdit {
                 background-color: #1a1a1a;
@@ -275,14 +330,14 @@ class TerminalDisplay(QTextEdit):
         self.setUndoRedoEnabled(False)
         self.setAcceptRichText(False)
 
-        # Position after the last PTY output — user may only type here or later
+        # Position after the last process output — user may only type here or later
         self._input_anchor = 0
         self._history: list[str] = []
         self._hist_idx = -1
 
     # ── anchor management ─────────────────────────────────────────────
     def _set_anchor(self):
-        """Called after every PTY write; locks the editable region."""
+        """Called after every write from the process; locks the editable region."""
         self._input_anchor = len(self.toPlainText())
 
     def _get_input_text(self) -> str:
@@ -305,82 +360,113 @@ class TerminalDisplay(QTextEdit):
             c.movePosition(QTextCursor.End)
             self.setTextCursor(c)
 
+    def _insert_local(self, text: str):
+        """Insert text into the input region using default formatting."""
+        cursor = self.textCursor()
+        self._ensure_cursor_at_end()
+        cursor = self.textCursor()
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(_DEFAULT_FG))
+        cursor.insertText(text, fmt)
+
     # ── keyboard handling ─────────────────────────────────────────────
     def keyPressEvent(self, event):
-        from PyQt5.QtGui import QKeyEvent
-        key  = event.key()
-        mods = event.modifiers()
-        ctrl = bool(mods & Qt.ControlModifier)
-        shift= bool(mods & Qt.ShiftModifier)
+        key   = event.key()
+        mods  = event.modifiers()
+        ctrl  = bool(mods & Qt.ControlModifier)
+        shift = bool(mods & Qt.ShiftModifier)
 
-        # ── Ctrl+Shift+C → copy selected text ────────────────────────
+        # ── Ctrl+Shift+C → explicit copy ─────────────────────────────
         if ctrl and shift and key == Qt.Key_C:
             if self.textCursor().hasSelection():
                 self.copy()
             return
 
-        # ── Ctrl+C → always send raw \x03 to PTY (kills foreground process)
-        # Writing the ETX byte to the PTY master is how real terminals send
-        # SIGINT. The kernel line discipline delivers it to the foreground
-        # process group — works for any subprocess, not just the shell.
+        # ── Ctrl+C → copy if something's selected, else interrupt ───
+        # (Windows has no SIGINT byte; interrupting is handled by the
+        # owning TerminalPane via GenerateConsoleCtrlEvent — see
+        # _send_ctrl_c. It's best-effort, not guaranteed.)
         if ctrl and key == Qt.Key_C:
-            self.char_written.emit(b"\x03")
+            if self.textCursor().hasSelection():
+                self.copy()
+            else:
+                self.interrupt_requested.emit()
             return
 
-        # ── Paste: Ctrl+V or Ctrl+Shift+V ────────────────────────────
+        # ── Paste: Ctrl+V ─────────────────────────────────────────────
+        # Pasted text becomes part of the pending command line — it is
+        # inserted locally, not sent immediately (there's no live echo
+        # to rely on here, unlike the PTY version).
         if ctrl and key == Qt.Key_V:
             clipboard = QApplication.clipboard().text()
             if clipboard:
-                self.char_written.emit(clipboard.encode("utf-8"))
+                self._insert_local(clipboard)
             return
 
-        # ── Ctrl+D → EOF ──────────────────────────────────────────────
+        # ── Ctrl+D → Windows EOF is Ctrl+Z, not Ctrl+D ───────────────
+        # Send whatever's typed so far, followed by the ^Z EOF marker.
         if ctrl and key == Qt.Key_D:
-            self.char_written.emit(b"\x04")
+            text = self._get_input_text()
+            self._clear_input()
+            self.line_submitted.emit((text + "\x1a\r\n").encode("utf-8"))
             return
 
-        # ── Ctrl+L → clear screen ─────────────────────────────────────
+        # ── Ctrl+L → clear screen locally, and re-issue `cls` so the
+        #    shell's own idea of the screen matches what we show ─────
         if ctrl and key == Qt.Key_L:
             self.clear()
             self._input_anchor = 0
-            self.char_written.emit(b"\x0c")   # also send to shell for PS1 redraw
+            self.line_submitted.emit(b"cls\r\n")
             return
 
-        # ── Ctrl+A → beginning of line ───────────────────────────────
+        # ── Ctrl+A → local: jump to start of input ───────────────────
         if ctrl and key == Qt.Key_A:
-            self.char_written.emit(b"\x01")
+            c = self.textCursor()
+            c.setPosition(self._input_anchor)
+            self.setTextCursor(c)
             return
 
-        # ── Ctrl+E → end of line ──────────────────────────────────────
+        # ── Ctrl+E → local: jump to end of input ─────────────────────
         if ctrl and key == Qt.Key_E:
-            self.char_written.emit(b"\x05")
+            c = self.textCursor()
+            c.movePosition(QTextCursor.End)
+            self.setTextCursor(c)
             return
 
-        # ── Ctrl+U → kill line ───────────────────────────────────────
+        # ── Ctrl+U → local: kill whole input line ────────────────────
         if ctrl and key == Qt.Key_U:
             self._clear_input()
-            self.char_written.emit(b"\x15")
             return
 
-        # ── Ctrl+W → kill word ───────────────────────────────────────
+        # ── Ctrl+W → local: kill previous word ───────────────────────
         if ctrl and key == Qt.Key_W:
-            self.char_written.emit(b"\x17")
+            c = self.textCursor()
+            pos = c.position()
+            if pos > self._input_anchor:
+                c.setPosition(self._input_anchor)
+                c.setPosition(pos, QTextCursor.KeepAnchor)
+                fragment = c.selectedText()
+                trimmed  = fragment.rstrip()
+                cut      = len(fragment) - len(trimmed)
+                word_start = trimmed.rfind(" ") + 1
+                c.setPosition(self._input_anchor + word_start)
+                c.setPosition(pos - cut, QTextCursor.KeepAnchor)
+                c.removeSelectedText()
             return
 
-        # ── Tab → completion ─────────────────────────────────────────
+        # ── Tab → cmd.exe can't complete over a pipe, so just insert
+        #    a literal tab rather than pretending to complete ────────
         if key == Qt.Key_Tab:
-            input_so_far = self._get_input_text()
-            self._clear_input()
-            self.char_written.emit((input_so_far + "\t").encode("utf-8"))
+            self._insert_local("\t")
             return
 
-        # ── Enter → send line ────────────────────────────────────────
+        # ── Enter → send the whole line ──────────────────────────────
         if key in (Qt.Key_Return, Qt.Key_Enter):
             text = self._get_input_text()
             if text:
                 self._history.append(text)
                 self._hist_idx = len(self._history)
-            self.char_written.emit((text + "\n").encode("utf-8"))
+            self.line_submitted.emit((text + "\r\n").encode("utf-8"))
             return
 
         # ── Backspace — only delete user's own input ─────────────────
@@ -389,7 +475,7 @@ class TerminalDisplay(QTextEdit):
                 super().keyPressEvent(event)
             return
 
-        # ── Arrow up/down → history ───────────────────────────────────
+        # ── Arrow up/down → local history ────────────────────────────
         if key == Qt.Key_Up:
             self._nav_history(-1)
             return
@@ -427,13 +513,7 @@ class TerminalDisplay(QTextEdit):
                                     self._hist_idx + direction))
         self._clear_input()
         entry = self._history[self._hist_idx]
-        cursor = self.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.setTextCursor(cursor)
-        # Insert history entry with default formatting
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor(_DEFAULT_FG))
-        cursor.insertText(entry, fmt)
+        self._insert_local(entry)
 
     def mousePressEvent(self, event):
         # Allow clicks anywhere for selection, but snap cursor to end for typing
@@ -451,35 +531,14 @@ class TerminalDisplay(QTextEdit):
 
     def contextMenuEvent(self, event):
         from PyQt5.QtWidgets import QMenu
+        menu = QMenu(self)
         has_sel = self.textCursor().hasSelection()
 
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background: #1e1e1e;
-                color: #e0e0e0;
-                border: 1px solid #3a3a3a;
-                border-radius: 6px;
-                padding: 4px;
-            }
-            QMenu::item {
-                padding: 5px 22px 5px 12px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected { background: #094771; }
-            QMenu::item:disabled { color: #555; }
-            QMenu::separator { height:1px; background:#333; margin:3px 8px; }
-        """)
-
-        copy_act   = menu.addAction("📋  Copy")
-        paste_act  = menu.addAction("📌  Paste")
+        copy_act  = menu.addAction("Copy")
+        paste_act = menu.addAction("Paste")
         menu.addSeparator()
-
-        kill_act   = menu.addAction("⛔  Force Kill (Ctrl+C)")
-        kill_act.setToolTip("Sends raw interrupt byte to foreground process")
-        menu.addSeparator()
-
-        clear_act  = menu.addAction("🧹  Clear terminal")
+        kill_act  = menu.addAction("Send Ctrl+C")
+        clear_act = menu.addAction("Clear")
 
         copy_act.setEnabled(has_sel)
 
@@ -491,15 +550,10 @@ class TerminalDisplay(QTextEdit):
         elif act == paste_act:
             clipboard = QApplication.clipboard().text()
             if clipboard:
-                self.char_written.emit(clipboard.encode("utf-8"))
+                self._insert_local(clipboard)
 
         elif act == kill_act:
-            # Write \x03 (ETX / Ctrl+C) directly to PTY — kills foreground
-            # process group via kernel line discipline. Safe: only the
-            # subprocess is killed, not the shell or the Qt application.
-            self.char_written.emit(b"\x03")
-            # Also send \x15 (Ctrl+U) to clear any partial line afterwards
-            self.char_written.emit(b"\x15")
+            self.interrupt_requested.emit()
 
         elif act == clear_act:
             self.clear()
@@ -509,28 +563,17 @@ class TerminalDisplay(QTextEdit):
 # ── Single terminal pane ──────────────────────────────────────────────────────
 class TerminalPane(QWidget):
     """
-    One terminal session: PTY-backed shell rendered in a unified TerminalDisplay.
-    Emits `closed` when the shell exits or the pane is killed.
+    One terminal session: cmd.exe hosted via QProcess, rendered in a
+    unified TerminalDisplay. Emits `closed` when the shell exits or the
+    pane is killed.
     """
     closed = pyqtSignal(object)
 
     def __init__(self, cwd: str | None = None):
         super().__init__()
-        self._cwd    = cwd or str(Path.home())
-        self._master = None
-        self._pid    = None
-        self._reader = None
-        self._parser      = AnsiParser()
-        self._last_cols   = 80
-        self._last_rows   = 24
-        self._is_resizing = False
-        self._echo_suppress = ""   # text we just sent; strip its echo
-
-        # Debounce resize: only send TIOCSWINSZ 300ms after the last resize event
-        self._resize_timer = QTimer()
-        self._resize_timer.setSingleShot(True)
-        self._resize_timer.setInterval(300)
-        self._resize_timer.timeout.connect(self._flush_resize)
+        self._cwd     = cwd or str(Path.home())
+        self._process: QProcess | None = None
+        self._parser  = AnsiParser()
 
         self._build_ui()
         self._spawn_shell()
@@ -542,107 +585,40 @@ class TerminalPane(QWidget):
         layout.setSpacing(0)
 
         self._display = TerminalDisplay()
-        self._display.char_written.connect(self._write_to_pty)
-        # Ctrl+C is now sent as \x03 via char_written; no separate sigint_req needed
+        self._display.line_submitted.connect(self._write_to_process)
+        self._display.interrupt_requested.connect(self._interrupt)
         layout.addWidget(self._display)
         self._display.setFocus()
 
     # ── shell spawning ────────────────────────────────────────────────
     def _spawn_shell(self):
-        shell = shutil.which("bash") or shutil.which("sh") or "/bin/sh"
-        self._master, slave = pty.openpty()
-        self._set_pty_size(80, 24)
+        self._process = QProcess(self)
+        self._process.setWorkingDirectory(self._cwd)
+        # Merge stdout/stderr the way a real terminal would present them
+        # as a single interleaved stream.
+        self._process.setProcessChannelMode(QProcess.MergedChannels)
 
-        flags = fcntl.fcntl(self._master, fcntl.F_GETFL)
-        fcntl.fcntl(self._master, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("PROMPT", "$P$G")  # normal "C:\path>" prompt
+        self._process.setProcessEnvironment(env)
 
-        self._pid = os.fork()
-        if self._pid == 0:
-            os.close(self._master)
-            os.setsid()
-            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
-            os.dup2(slave, 0)
-            os.dup2(slave, 1)
-            os.dup2(slave, 2)
-            os.close(slave)
-            os.chdir(self._cwd)
-            env = os.environ.copy()
-            env.update({
-                "TERM":      "xterm-256color",
-                "COLORTERM": "truecolor",
-                "COLUMNS":   "80",
-                "LINES":     "24",
-            })
-            os.execve(shell, [shell, "-i"], env)
-            os._exit(1)
+        _configure_windows_process(self._process)
 
-        os.close(slave)
-        self._reader = _PtyReader(self._master)
-        self._reader.data_ready.connect(self._on_data)
-        self._reader.finished.connect(self._on_shell_exit)
-        self._reader.start()
+        self._process.readyRead.connect(self._on_data)
+        self._process.finished.connect(self._on_shell_exit)
+        self._process.errorOccurred.connect(self._on_process_error)
 
-    def _set_pty_size(self, cols: int, rows: int):
-        if self._master is None:
-            return
-        size = struct.pack("HHHH", rows, cols, 0, 0)
-        try:
-            fcntl.ioctl(self._master, termios.TIOCSWINSZ, size)
-        except OSError:
-            pass
+        self._process.start("cmd.exe", [])
+        if not self._process.waitForStarted(3000):
+            self._on_process_error(self._process.error())
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self._master is None:
-            return
-        char_w = self._display.fontMetrics().horizontalAdvance("M")
-        char_h = self._display.fontMetrics().height()
-        if char_w > 0 and char_h > 0:
-            self._last_cols = max(10, self._display.width()  // char_w)
-            self._last_rows = max(4,  self._display.height() // char_h)
-        # Debounce: restart the timer on every resize event.
-        # _flush_resize fires only once, 300ms after the user stops dragging.
-        self._resize_timer.start()
-
-    def _flush_resize(self):
-        """Actually send TIOCSWINSZ after the resize settles."""
-        if self._master is None:
-            return
-        self._is_resizing = True
-        self._set_pty_size(self._last_cols, self._last_rows)
-        # Give bash a moment to emit its redrawn prompt, then swallow it
-        QTimer.singleShot(120, self._finish_resize)
-
-    def _finish_resize(self):
-        """
-        After bash redraws the prompt in response to SIGWINCH, trim any
-        duplicate prompt lines that were appended to the display.
-        We do this by truncating back to the last anchor point.
-        """
-        self._is_resizing = False
-
-    # ── incoming data from PTY ────────────────────────────────────────
-    def _on_data(self, raw: bytes):
-        # While a resize is in flight, bash sends a redrawn prompt via SIGWINCH.
-        # Swallow that output entirely — we already have the prompt on screen.
-        if self._is_resizing:
+    # ── incoming data from the process ────────────────────────────────
+    def _on_data(self):
+        raw = bytes(self._process.readAll())
+        if not raw:
             return
 
         filtered = self._strip_cursor_sequences(raw)
-
-        # ── Echo suppression ──────────────────────────────────────────
-        # The PTY echoes back exactly what we typed. Strip it so the
-        # command doesn't appear twice. We match against the start of the
-        # decoded chunk (after cursor-sequence stripping).
-        if self._echo_suppress:
-            decoded = filtered.decode("utf-8", errors="replace")
-            # The echo arrives as the typed text followed by \r\n
-            echo_candidate = self._echo_suppress
-            if echo_candidate in decoded:
-                decoded = decoded.replace(echo_candidate, "", 1)
-                filtered = decoded.encode("utf-8")
-            self._echo_suppress = ""
-
         spans    = self._parser.feed(filtered)
 
         cursor = self._display.textCursor()
@@ -658,7 +634,7 @@ class TerminalPane(QWidget):
 
         self._display.setTextCursor(cursor)
         self._display.ensureCursorVisible()
-        # Lock: everything written by PTY is "output", user types after this
+        # Lock: everything written by the process is "output", user types after this
         self._display._set_anchor()
 
     def _strip_cursor_sequences(self, raw: bytes) -> bytes:
@@ -667,66 +643,59 @@ class TerminalPane(QWidget):
             return m.group(0) if m.group(2) == "m" else ""
         return _ESC_RE.sub(_keep_sgr, text).encode("utf-8")
 
-    def _on_shell_exit(self):
+    def _on_shell_exit(self, exit_code: int, exit_status):
         cursor = self._display.textCursor()
         cursor.movePosition(QTextCursor.End)
         fmt = QTextCharFormat()
         fmt.setForeground(QColor("#888888"))
         fmt.setFontItalic(True)
-        cursor.insertText("\n[Process exited]\n", fmt)
+        cursor.insertText(f"\n[Process exited ({exit_code})]\n", fmt)
         self._display.setTextCursor(cursor)
         self.closed.emit(self)
 
-    # ── writing to PTY ────────────────────────────────────────────────
-    def _write_to_pty(self, data: bytes):
-        if self._master is not None:
-            try:
-                os.write(self._master, data)
-                # Track printable text for echo suppression.
-                # The PTY will echo back exactly what we sent (minus the \n
-                # which becomes \r\n in the output stream).
-                text = data.decode("utf-8", errors="replace")
-                printable = text.rstrip("\n\r")
-                if printable:
-                    self._echo_suppress = printable
-            except OSError:
-                pass
+    def _on_process_error(self, error):
+        cursor = self._display.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor("#ff5555"))
+        fmt.setFontItalic(True)
+        cursor.insertText(f"\n[Terminal error: {error}]\n", fmt)
+        self._display.setTextCursor(cursor)
 
-    def _send_signal(self, sig):
-        if self._pid:
-            try:
-                os.killpg(os.getpgid(self._pid), sig)
-            except (OSError, ProcessLookupError):
-                pass
+    # ── writing to the process ────────────────────────────────────────
+    def _write_to_process(self, data: bytes):
+        if self._process is not None:
+            self._process.write(data)
+
+    def _interrupt(self):
+        if self._process is None:
+            return
+        pid_obj = self._process.processId()
+        if pid_obj:
+            _send_ctrl_c(int(pid_obj))
 
     # ── public helpers ────────────────────────────────────────────────
     def set_cwd(self, path: str):
-        if os.path.isdir(path) and self._master:
-            try:
-                os.write(self._master, f'cd "{path}"\n'.encode())
-            except OSError:
-                pass
+        if Path(path).is_dir() and self._process is not None:
+            # /d also switches drive letter, matching the "cd" a user
+            # would type by hand on Windows.
+            self._process.write(f'cd /d "{path}"\r\n'.encode())
 
     def focus_input(self):
         self._display.setFocus()
 
     def kill(self):
-        if self._reader:
-            self._reader.stop()
-            self._reader.wait(500)
-        if self._pid:
-            try:
-                os.kill(self._pid, signal.SIGTERM)
-                os.waitpid(self._pid, os.WNOHANG)
-            except (OSError, ChildProcessError):
-                pass
-            self._pid = None
-        if self._master is not None:
-            try:
-                os.close(self._master)
-            except OSError:
-                pass
-            self._master = None
+        if self._process is not None:
+            self._process.readyRead.disconnect(self._on_data)
+            self._process.finished.disconnect(self._on_shell_exit)
+            self._process.errorOccurred.disconnect(self._on_process_error)
+            # QProcess.terminate() on Windows posts WM_CLOSE to top-level
+            # windows, which cmd.exe (headless, no window) doesn't have —
+            # so it's unreliable here. kill() (TerminateProcess) is blunt
+            # but is the version that actually works for a console child.
+            self._process.kill()
+            self._process.waitForFinished(500)
+            self._process = None
 
 
 # ── Tab manager ───────────────────────────────────────────────────────────────
@@ -871,7 +840,7 @@ class TerminalManager(QObject):
         pane = TerminalPane(cwd=cwd)
         pane.closed.connect(self._on_pane_closed)
 
-        label = f"bash {self._tab_count}"
+        label = f"cmd {self._tab_count}"
         idx   = self._tabs.addTab(pane, label)
         self._tabs.setCurrentIndex(idx)
 
@@ -894,7 +863,7 @@ class TerminalManager(QObject):
         return pane
 
     def set_cwd(self, path: str):
-        """Send 'cd <path>' to the currently active terminal."""
+        """Send 'cd /d <path>' to the currently active terminal."""
         pane = self._current_pane()
         if pane:
             pane.set_cwd(path)
